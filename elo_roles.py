@@ -8,6 +8,8 @@ The roles have to sit directly beneath the bot's own top role: Discord refuses t
 let a bot place a role above itself, so an admin has to drag the bot's role to the
 top once. `ceiling_warning` reports when that has not been done.
 """
+from dataclasses import dataclass
+
 import discord
 
 import faceit
@@ -15,6 +17,18 @@ import levels
 import links
 
 REASON = "FACEIT elo sync"
+
+
+@dataclass(frozen=True)
+class LevelChange:
+    member: discord.Member
+    player: faceit.Player
+    before: int
+    after: int
+
+    @property
+    def promoted(self) -> bool:
+        return self.after > self.before
 
 
 class RoleSyncError(Exception):
@@ -32,10 +46,11 @@ def ceiling_warning(guild: discord.Guild) -> str | None:
             f"Drag **{guild.me.top_role.name}** to the top of the role list to fix it.")
 
 
-async def sync(guild: discord.Guild) -> None:
+async def sync(guild: discord.Guild) -> list[LevelChange]:
+    """Refresh roles and report whose skill level moved since the last run."""
     entries = links.for_guild(guild.id)
     if not entries:
-        return
+        return []
     if not guild.me.guild_permissions.manage_roles:
         raise RoleSyncError("I need the **Manage Roles** permission to do this.")
 
@@ -51,7 +66,7 @@ async def sync(guild: discord.Guild) -> None:
         ranked.append((member, entry, player))
 
     if not ranked:
-        return
+        return []
     ceiling = guild.me.top_role.position
     if ceiling - len(ranked) < 1:
         raise RoleSyncError(
@@ -60,11 +75,20 @@ async def sync(guild: discord.Guild) -> None:
 
     ranked.sort(key=lambda row: row[2].elo, reverse=True)
     positions = {}
+    changes = []
     for index, (member, entry, player) in enumerate(ranked):
-        role = await _ensure_role(guild, member, entry, player)
+        level = levels.level_for_elo(player.elo)
+        before = entry.get("level")
+        if before is not None and before != level:
+            changes.append(LevelChange(member, player, before, level))
+        if before != level:
+            links.update(guild.id, member.id, level=level)
+
+        role = await _ensure_role(guild, member, entry, player, level)
         positions[role] = ceiling - 1 - index
 
     await guild.edit_role_positions(positions=positions, reason=REASON)
+    return changes
 
 
 async def forget(guild: discord.Guild, user_id: int) -> bool:
@@ -87,8 +111,8 @@ async def _member(guild: discord.Guild, user_id: int) -> discord.Member | None:
 
 
 async def _ensure_role(guild: discord.Guild, member: discord.Member,
-                       entry: dict, player: faceit.Player) -> discord.Role:
-    colour = discord.Colour(levels.LEVEL_COLOR[levels.level_for_elo(player.elo)])
+                       entry: dict, player: faceit.Player, level: int) -> discord.Role:
+    colour = discord.Colour(levels.LEVEL_COLOR[level])
     name = f"{player.elo} {player.nickname}"
 
     role = guild.get_role(entry.get("role_id") or 0)

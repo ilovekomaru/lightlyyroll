@@ -127,7 +127,7 @@ async def loginfaceit(interaction: discord.Interaction, nickname: str):
     await interaction.response.defer(ephemeral=True)
     player = await faceit.player(nickname)
     links.link(interaction.guild.id, interaction.user.id, player.id, player.nickname)
-    await elo_roles.sync(interaction.guild)
+    await announce(interaction.guild, await elo_roles.sync(interaction.guild))
 
     message = f"Linked to **{player.nickname}** — {player.elo} elo."
     warning = elo_roles.ceiling_warning(interaction.guild)
@@ -144,6 +144,33 @@ async def logoutfaceit(interaction: discord.Interaction):
         ephemeral=True)
 
 
+@tree.command(name="faceitchannel", description="Choose where level-up announcements are posted")
+@app_commands.describe(channel="Channel to post in, or leave empty to turn announcements off")
+@app_commands.guild_only()
+@app_commands.default_permissions(manage_guild=True)
+async def faceitchannel(interaction: discord.Interaction, channel: discord.TextChannel = None):
+    links.set_channel(interaction.guild.id, channel.id if channel else None)
+    await interaction.response.send_message(
+        f"Level changes will be announced in {channel.mention}." if channel
+        else "Level announcements are off.", ephemeral=True)
+
+
+async def announce(guild: discord.Guild, changes: list[elo_roles.LevelChange]) -> None:
+    channel = guild.get_channel(links.channel_id(guild.id) or 0)
+    if channel is None:
+        return
+    for change in changes:
+        icon = levels.icon_file(change.after)
+        verb = "reached" if change.promoted else "dropped to"
+        embed = discord.Embed(
+            colour=levels.LEVEL_COLOR[change.after],
+            description=(f"{change.member.mention} — **{change.player.nickname}** "
+                         f"{verb} **level {change.after}**\n"
+                         f"{change.player.elo} elo • was level {change.before}"))
+        embed.set_thumbnail(url=f"attachment://{icon.name}")
+        await channel.send(embed=embed, file=discord.File(icon, filename=icon.name))
+
+
 @tasks.loop(minutes=REFRESH_MINUTES)
 async def refresh_elo_roles():
     for guild_id in links.guild_ids():
@@ -151,7 +178,7 @@ async def refresh_elo_roles():
         if guild is None:
             continue
         try:
-            await elo_roles.sync(guild)
+            await announce(guild, await elo_roles.sync(guild))
         except (FaceitError, elo_roles.RoleSyncError, discord.HTTPException) as exc:
             print(f"elo role sync failed in {guild.name}: {exc}", flush=True)
 

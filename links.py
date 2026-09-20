@@ -1,7 +1,8 @@
-"""Which Discord member is which FACEIT player, kept in a small JSON file.
+"""Per-guild bot state: who is linked to which FACEIT player, and where to announce.
 
-Shape: {guild_id: {user_id: {player_id, nickname, role_id}}}. Ids are strings
-because JSON object keys always are.
+Shape: {"links": {guild_id: {user_id: {player_id, nickname, role_id, level}}},
+        "channels": {guild_id: channel_id}}
+Ids are strings because JSON object keys always are.
 
 Every mutation rewrites the whole file, which is fine at this size and keeps the
 on-disk state consistent: the write goes to a temp file and is then moved into
@@ -16,9 +17,13 @@ PATH = Path(__file__).parent / "links.json"
 
 def _read() -> dict:
     try:
-        return json.loads(PATH.read_text(encoding="utf-8"))
+        data = json.loads(PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {}
+        return {"links": {}, "channels": {}}
+    if "links" not in data:
+        data = {"links": data}  # the original flat {guild: {user: ...}} layout
+    data.setdefault("channels", {})
+    return data
 
 
 def _write(data: dict) -> None:
@@ -28,23 +33,23 @@ def _write(data: dict) -> None:
 
 
 def for_guild(guild_id: int) -> dict:
-    return _read().get(str(guild_id), {})
+    return _read()["links"].get(str(guild_id), {})
 
 
 def guild_ids() -> list[int]:
-    return [int(key) for key in _read()]
+    return [int(key) for key in _read()["links"]]
 
 
 def link(guild_id: int, user_id: int, player_id: str, nickname: str) -> None:
     data = _read()
-    entry = data.setdefault(str(guild_id), {}).setdefault(str(user_id), {})
+    entry = data["links"].setdefault(str(guild_id), {}).setdefault(str(user_id), {})
     entry.update(player_id=player_id, nickname=nickname)
     _write(data)
 
 
 def update(guild_id: int, user_id: int, **fields) -> None:
     data = _read()
-    entry = data.get(str(guild_id), {}).get(str(user_id))
+    entry = data["links"].get(str(guild_id), {}).get(str(user_id))
     if entry is None:
         return
     entry.update(fields)
@@ -53,8 +58,22 @@ def update(guild_id: int, user_id: int, **fields) -> None:
 
 def unlink(guild_id: int, user_id: int) -> dict | None:
     data = _read()
-    entry = data.get(str(guild_id), {}).pop(str(user_id), None)
-    if not data.get(str(guild_id)):
-        data.pop(str(guild_id), None)
+    entry = data["links"].get(str(guild_id), {}).pop(str(user_id), None)
+    if not data["links"].get(str(guild_id)):
+        data["links"].pop(str(guild_id), None)
     _write(data)
     return entry
+
+
+def channel_id(guild_id: int) -> int | None:
+    found = _read()["channels"].get(str(guild_id))
+    return int(found) if found else None
+
+
+def set_channel(guild_id: int, channel: int | None) -> None:
+    data = _read()
+    if channel is None:
+        data["channels"].pop(str(guild_id), None)
+    else:
+        data["channels"][str(guild_id)] = channel
+    _write(data)

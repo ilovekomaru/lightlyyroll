@@ -11,6 +11,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/avg <nickname>` | Average kills per match |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
 | `/logoutfaceit` | Unlink and remove that role |
+| `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
 
 Every FACEIT reply is an embed carrying the player's avatar, nickname, country flag and
 skill-level badge, tinted with that level's colour.
@@ -82,6 +83,9 @@ Worth knowing before enabling it:
   when a value actually changed, since that is the rate-limited part.
 - Changing the name format needs no migration: a role whose name no longer matches the
   computed one is renamed in place on the next sync, which runs at startup.
+- `/faceitchannel` (needs Manage Server) picks where level changes are announced. The last
+  seen level is stored per link, so a change is announced once, and never on a first link —
+  otherwise everyone would be announced the moment they signed up.
 
 ## Elo chart
 
