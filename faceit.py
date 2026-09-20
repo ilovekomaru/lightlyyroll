@@ -19,6 +19,7 @@ USER_AGENT = "lightlyyroll-discord-bot"
 TIMEOUT = 10
 
 USER_URL = "https://www.faceit.com/api/users/v1/nicknames/{nickname}"
+SEARCH_URL = "https://www.faceit.com/api/searcher/v1/players"
 STATS_URL = "https://www.faceit.com/api/stats/v1/stats/time/users/{player_id}/games/cs2"
 
 # Per-match keys in the stats payload, decoded by correlating against a known profile
@@ -29,6 +30,10 @@ ROUNDS, HEADSHOTS, DAMAGE = "i12", "i13", "i20"
 
 class FaceitError(Exception):
     """A failure that should be shown to the user rather than logged."""
+
+
+class PlayerNotFound(FaceitError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -60,7 +65,7 @@ def _fetch(url: str):
             return json.load(response)
     except error.HTTPError as exc:
         if exc.code == 404:
-            raise FaceitError("Player not found on FACEIT.") from exc
+            raise PlayerNotFound("Player not found on FACEIT.") from exc
         raise FaceitError(f"FACEIT returned HTTP {exc.code}.") from exc
     except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise FaceitError("Could not reach FACEIT.") from exc
@@ -70,9 +75,34 @@ async def _get(url: str):
     return await asyncio.to_thread(_fetch, url)
 
 
+async def _profile(nickname: str) -> dict:
+    return (await _get(USER_URL.format(nickname=quote(nickname, safe=""))))["payload"]
+
+
+async def _match_nickname(nickname: str) -> str | None:
+    """Find the real spelling of a nickname that differs only by case.
+
+    Search is fuzzy — querying "el0t3" also returns "EL0T3RR0RIST", a different
+    account — so only an exact case-insensitive equality counts as a match.
+    """
+    url = SEARCH_URL + "?" + urlencode({"query": nickname, "limit": 20, "offset": 0})
+    wanted = nickname.casefold()
+    for result in (await _get(url))["payload"]:
+        if result["nickname"].casefold() == wanted:
+            return result["nickname"]
+    return None
+
+
 async def player(nickname: str) -> Player:
-    url = USER_URL.format(nickname=quote(nickname, safe=""))
-    payload = (await _get(url))["payload"]
+    try:
+        payload = await _profile(nickname)
+    except PlayerNotFound:
+        # The nicknames endpoint matches case exactly; the search endpoint does not.
+        canonical = await _match_nickname(nickname)
+        if canonical is None:
+            raise
+        payload = await _profile(canonical)
+
     cs2 = payload.get("games", {}).get("cs2")
     if not cs2:
         raise FaceitError(f"**{payload['nickname']}** has no CS2 profile on FACEIT.")

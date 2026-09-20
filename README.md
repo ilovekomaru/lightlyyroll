@@ -28,7 +28,14 @@ so no API key is needed and the numbers match a player's profile page exactly:
 ```
 /api/users/v1/nicknames/<nickname>              nickname, avatar, country, ELO
 /api/stats/v1/stats/time/users/<id>/games/cs2   per-match stats
+/api/searcher/v1/players?query=<nickname>       case-insensitive fallback
 ```
+
+The nicknames endpoint matches case exactly, so `EL0T3RRORIST` 404s where `el0t3rrorist`
+succeeds. On a miss the search endpoint supplies the real spelling. Search is **fuzzy** —
+querying `el0t3` also returns `EL0T3RR0RIST`, a different account with different elo — so
+only an exact case-insensitive equality is accepted as a match, never the top hit. Search
+results carry no elo, hence the second lookup by the canonical nickname.
 
 `/stats` and `/avg` average the **last 30 matches** (`MATCH_WINDOW` in `bot.py`) — the same
 default the FACEIT Forecast extension uses (`sliderValue: 30`). Ratios are computed from
