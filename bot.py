@@ -50,12 +50,11 @@ def player_card(player: Player) -> tuple[discord.Embed, discord.File]:
     icon = levels.icon_file(level)
     file = discord.File(icon, filename=icon.name)
 
-    embed = discord.Embed(colour=levels.LEVEL_COLOR[level])
+    embed = discord.Embed(title=f"{player.elo} ELO", colour=levels.LEVEL_COLOR[level])
     embed.set_author(name=f"{player.nickname} {flag(player.country)}".strip(),
                      url=f"https://www.faceit.com/en/players/{player.nickname}",
                      icon_url=player.avatar)
     embed.set_thumbnail(url=f"attachment://{icon.name}")
-    embed.set_footer(text=f"Level {level} • {player.elo} ELO")
     return embed, file
 
 
@@ -71,7 +70,6 @@ async def elo(interaction: discord.Interaction, nickname: str):
     await interaction.response.defer()
     player = await faceit.player(nickname)
     embed, file = player_card(player)
-    embed.add_field(name="ELO", value=f"**{player.elo}**")
     await interaction.followup.send(embed=embed, file=file)
 
 
@@ -82,13 +80,13 @@ async def stats(interaction: discord.Interaction, nickname: str):
     player = await faceit.player(nickname)
     data = await faceit.recent_stats(player.id, MATCH_WINDOW)
     embed, file = player_card(player)
-    embed.description = f"Average over the last **{data.matches}** matches"
     embed.add_field(name="K/D/A", value=f"{data.kills:.0f} / {data.deaths:.0f} / {data.assists:.0f}")
     embed.add_field(name="K/D", value=f"{data.kd:.2f}")
     embed.add_field(name="K/R", value=f"{data.kr:.2f}")
     embed.add_field(name="HS", value=f"{data.headshot_pct:.0f}%")
     embed.add_field(name="ADR", value=f"{data.adr:.1f}")
     embed.add_field(name="Win Rate", value=f"{data.win_rate:.0f}%")
+    embed.set_footer(text=f"Last {data.matches} matches")
     await interaction.followup.send(embed=embed, file=file)
 
 
@@ -99,7 +97,8 @@ async def avg(interaction: discord.Interaction, nickname: str):
     player = await faceit.player(nickname)
     data = await faceit.recent_stats(player.id, MATCH_WINDOW)
     embed, file = player_card(player)
-    embed.add_field(name=f"Average kills (last {data.matches})", value=f"**{data.kills:.1f}**")
+    embed.add_field(name="Average kills", value=f"{data.kills:.1f}")
+    embed.set_footer(text=f"Last {data.matches} matches")
     await interaction.followup.send(embed=embed, file=file)
 
 
