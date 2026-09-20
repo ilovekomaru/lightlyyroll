@@ -60,8 +60,8 @@ Two things worth knowing:
 
 ## Elo roles
 
-`/loginfaceit` gives each linked member their own hoisted role, named with their elo and
-coloured by their skill level. Discord groups the member list by each member's highest
+`/loginfaceit` gives each linked member their own hoisted role, named `<elo> <nickname>`
+(e.g. `2396 el0t3rrorist`) and coloured by their skill level. Discord groups the member list by each member's highest
 hoisted role and orders those groups by role position, so keeping the roles sorted by elo
 turns the sidebar into a live leaderboard. A background task refreshes every 15 minutes
 (`REFRESH_MINUTES` in `bot.py`) and reorders everything in a single API call.
@@ -80,6 +80,8 @@ Worth knowing before enabling it:
   The systemd unit already grants write access to the install directory.
 - Roles are cleaned up when a member leaves or runs `/logoutfaceit`. Role edits happen only
   when a value actually changed, since that is the rate-limited part.
+- Changing the name format needs no migration: a role whose name no longer matches the
+  computed one is renamed in place on the next sync, which runs at startup.
 
 ## Elo chart
 

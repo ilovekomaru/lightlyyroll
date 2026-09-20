@@ -89,7 +89,7 @@ async def _member(guild: discord.Guild, user_id: int) -> discord.Member | None:
 async def _ensure_role(guild: discord.Guild, member: discord.Member,
                        entry: dict, player: faceit.Player) -> discord.Role:
     colour = discord.Colour(levels.LEVEL_COLOR[levels.level_for_elo(player.elo)])
-    name = str(player.elo)
+    name = f"{player.elo} {player.nickname}"
 
     role = guild.get_role(entry.get("role_id") or 0)
     if role is None:
