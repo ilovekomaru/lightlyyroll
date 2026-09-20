@@ -1,0 +1,22 @@
+[Unit]
+Description=lightlyyroll Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lightlyyroll
+WorkingDirectory=/opt/lightlyyroll
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/lightlyyroll/.venv/bin/python bot.py
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lightlyyroll
+
+[Install]
+WantedBy=multi-user.target
