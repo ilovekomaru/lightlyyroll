@@ -20,6 +20,7 @@ load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")
+OWNER_ID = int(os.getenv("OWNER_ID") or 0)
 MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 REFRESH_MINUTES = 15
@@ -134,6 +135,29 @@ async def loginfaceit(interaction: discord.Interaction, nickname: str):
     await interaction.followup.send(f"{message}\n{warning}" if warning else message, ephemeral=True)
 
 
+def owner_only():
+    """Restrict to the account in OWNER_ID. Discord has no owner-only visibility,
+    so the command is still listed for everyone; it just refuses."""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return OWNER_ID != 0 and interaction.user.id == OWNER_ID
+    return app_commands.check(predicate)
+
+
+@tree.command(name="loginfaceitforce", description="Link someone else's FACEIT account")
+@app_commands.describe(member="Who to link", nickname="Their FACEIT nickname")
+@app_commands.guild_only()
+@owner_only()
+async def loginfaceitforce(interaction: discord.Interaction, member: discord.Member, nickname: str):
+    await interaction.response.defer(ephemeral=True)
+    player = await faceit.player(nickname)
+    links.link(interaction.guild.id, member.id, player.id, player.nickname)
+    await announce(interaction.guild, await elo_roles.sync(interaction.guild))
+
+    message = f"Linked {member.mention} to **{player.nickname}** — {player.elo} elo."
+    warning = elo_roles.ceiling_warning(interaction.guild)
+    await interaction.followup.send(f"{message}\n{warning}" if warning else message, ephemeral=True)
+
+
 @tree.command(name="logoutfaceit", description="Unlink your FACEIT account and remove your elo role")
 @app_commands.guild_only()
 async def logoutfaceit(interaction: discord.Interaction):
@@ -193,7 +217,9 @@ async def on_command_error(interaction: discord.Interaction, error: app_commands
     cause = error.__cause__ if isinstance(error, app_commands.CommandInvokeError) else error
     shown = (FaceitError, elo_roles.RoleSyncError)
     message = str(cause) if isinstance(cause, shown) else "Something went wrong."
-    if isinstance(cause, discord.Forbidden):
+    if isinstance(cause, app_commands.CheckFailure):
+        message = "Only the bot owner can use that command."
+    elif isinstance(cause, discord.Forbidden):
         message = "I do not have permission to manage roles here."
     elif not isinstance(cause, shown):
         print(f"Unhandled command error: {error!r}", flush=True)
