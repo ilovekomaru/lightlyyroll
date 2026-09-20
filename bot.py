@@ -1,3 +1,5 @@
+import asyncio
+import io
 import os
 import random
 import sys
@@ -6,6 +8,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
+import chart
 import faceit
 import levels
 from faceit import FaceitError, Player
@@ -15,6 +18,7 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")
 MATCH_WINDOW = 30
+MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 
 if not TOKEN:
     sys.exit("DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token.")
@@ -64,13 +68,22 @@ async def roll(interaction: discord.Interaction, maximum: app_commands.Range[int
     await interaction.response.send_message(f"\U0001F3B2 {random.randint(0, maximum)} (0-{maximum})")
 
 
-@tree.command(name="elo", description="Show a player's FACEIT CS2 elo")
-@app_commands.describe(nickname="FACEIT nickname")
-async def elo(interaction: discord.Interaction, nickname: str):
+@tree.command(name="elo", description="Show a player's FACEIT CS2 elo and recent trend")
+@app_commands.describe(nickname="FACEIT nickname", matches="Matches to plot (default 30, max 100)")
+async def elo(interaction: discord.Interaction, nickname: str,
+              matches: app_commands.Range[int, 2, MAX_HISTORY] = MATCH_WINDOW):
     await interaction.response.defer()
     player = await faceit.player(nickname)
+    history = await faceit.elo_history(player.id, matches)
     embed, file = player_card(player)
-    await interaction.followup.send(embed=embed, file=file)
+
+    image = await asyncio.to_thread(chart.render_elo, history)
+    embed.set_image(url="attachment://elo.png")
+    change = history[-1] - history[0]
+    embed.set_footer(text=f"Last {len(history)} matches • {change:+} elo")
+
+    await interaction.followup.send(embed=embed,
+                                    files=[file, discord.File(io.BytesIO(image), "elo.png")])
 
 
 @tree.command(name="stats", description="Show a player's recent FACEIT CS2 stats")

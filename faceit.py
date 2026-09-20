@@ -85,11 +85,22 @@ async def player(nickname: str) -> Player:
     )
 
 
-async def recent_stats(player_id: str, size: int = 30) -> Stats:
+async def _matches(player_id: str, size: int) -> list[dict]:
     url = STATS_URL.format(player_id=quote(player_id, safe="")) + "?" + urlencode({"size": size})
     matches = await _get(url)
     if not matches:
         raise FaceitError("No recent CS2 matches found for this player.")
+    return matches
+
+
+async def elo_history(player_id: str, size: int = 30) -> list[int]:
+    """Elo after each of the last `size` matches, oldest first."""
+    matches = await _matches(player_id, size)
+    return [int(match["elo"]) for match in reversed(matches) if match.get("elo") is not None]
+
+
+async def recent_stats(player_id: str, size: int = 30) -> Stats:
+    matches = await _matches(player_id, size)
 
     def total(key: str) -> float:
         return sum(float(match[key]) for match in matches)

@@ -6,7 +6,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | --- | --- |
 | `/roll` | Random number 0–100 |
 | `/roll <number>` | Random number 0–`<number>` |
-| `/elo <nickname>` | Player's current CS2 ELO |
+| `/elo <nickname> [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats <nickname>` | K/D/A, K/D, K/R, HS%, ADR and win rate |
 | `/avg <nickname>` | Average kills per match |
 
@@ -48,6 +48,22 @@ Two things worth knowing:
   residential IP; a datacenter IP may be treated differently. If the server starts getting
   403s, switch to the official Data API at https://developers.faceit.com (free key, but it
   serves lifetime stats only and has no ADR).
+
+## Elo chart
+
+`/elo` plots elo after each match, oldest to newest, from the `elo` field of the same
+per-match payload. The y-axis spans the period's own low and high rather than starting at
+zero, since absolute elo never approaches zero and a zero baseline would flatten the line
+into a straight edge. 100 is a hard ceiling because the endpoint refuses larger pages.
+
+`chart.py` renders it with matplotlib's `Figure` API rather than `pyplot` — pyplot carries
+global state and is not safe to drive from the worker threads these renders run on. The
+palette is anchored on the embed's own `#242429` surface so the image reads as part of the
+message; the amber series colour was checked against that surface for lightness band,
+chroma and 3:1 contrast rather than picked by eye.
+
+Note matplotlib's first import builds a font cache and takes a few seconds; it happens once,
+at startup, and is not a hang.
 
 ## Level badges
 
