@@ -43,6 +43,10 @@ def guild_ids() -> list[int]:
 def link(guild_id: int, user_id: int, player_id: str, nickname: str) -> None:
     data = _read()
     entry = data["links"].setdefault(str(guild_id), {}).setdefault(str(user_id), {})
+    if entry.get("player_id") != player_id:
+        # A different FACEIT account: the level on record belongs to the old one, and
+        # keeping it would report the switch as a level change.
+        entry.pop("level", None)
     entry.update(player_id=player_id, nickname=nickname)
     _write(data)
 
