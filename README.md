@@ -9,6 +9,8 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/elo <nickname> [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats <nickname>` | K/D/A, K/D, K/R, HS%, ADR and win rate |
 | `/avg <nickname>` | Average kills per match |
+| `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
+| `/logoutfaceit` | Unlink and remove that role |
 
 Every FACEIT reply is an embed carrying the player's avatar, nickname, country flag and
 skill-level badge, tinted with that level's colour.
@@ -55,6 +57,29 @@ Two things worth knowing:
   residential IP; a datacenter IP may be treated differently. If the server starts getting
   403s, switch to the official Data API at https://developers.faceit.com (free key, but it
   serves lifetime stats only and has no ADR).
+
+## Elo roles
+
+`/loginfaceit` gives each linked member their own hoisted role, named with their elo and
+coloured by their skill level. Discord groups the member list by each member's highest
+hoisted role and orders those groups by role position, so keeping the roles sorted by elo
+turns the sidebar into a live leaderboard. A background task refreshes every 15 minutes
+(`REFRESH_MINUTES` in `bot.py`) and reorders everything in a single API call.
+
+**One manual setup step.** Discord will not let a bot place a role above its own, so drag
+the bot's role to the **top** of the server's role list once. Until that is done, elo roles
+sit below whatever outranks the bot; `/loginfaceit` says so when it detects this.
+
+Worth knowing before enabling it:
+
+- Name colour comes from a member's highest *coloured* role, so while these sit on top,
+  a FACEIT level colour will override staff colours.
+- Discord caps a server at 250 roles, which is the ceiling on linked members.
+- Anyone can claim any nickname — there is no proof of ownership without FACEIT OAuth.
+- Links live in `links.json` beside the code (gitignored, since it is per-deployment state).
+  The systemd unit already grants write access to the install directory.
+- Roles are cleaned up when a member leaves or runs `/logoutfaceit`. Role edits happen only
+  when a value actually changed, since that is the rate-limited part.
 
 ## Elo chart
 

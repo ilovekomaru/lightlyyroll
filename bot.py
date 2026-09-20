@@ -9,8 +9,11 @@ from discord import app_commands
 from dotenv import load_dotenv
 
 import chart
+import elo_roles
 import faceit
 import levels
+import links
+from discord.ext import tasks
 from faceit import FaceitError, Player
 
 load_dotenv()
@@ -19,6 +22,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = os.getenv("GUILD_ID")
 MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
+REFRESH_MINUTES = 15
 
 if not TOKEN:
     sys.exit("DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token.")
@@ -30,6 +34,7 @@ class RollBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
+        refresh_elo_roles.start()
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
             self.tree.copy_global_to(guild=guild)
@@ -115,11 +120,55 @@ async def avg(interaction: discord.Interaction, nickname: str):
     await interaction.followup.send(embed=embed, file=file)
 
 
+@tree.command(name="loginfaceit", description="Link your FACEIT account and get an elo role")
+@app_commands.describe(nickname="Your FACEIT nickname")
+@app_commands.guild_only()
+async def loginfaceit(interaction: discord.Interaction, nickname: str):
+    await interaction.response.defer(ephemeral=True)
+    player = await faceit.player(nickname)
+    links.link(interaction.guild.id, interaction.user.id, player.id, player.nickname)
+    await elo_roles.sync(interaction.guild)
+
+    message = f"Linked to **{player.nickname}** — {player.elo} elo."
+    warning = elo_roles.ceiling_warning(interaction.guild)
+    await interaction.followup.send(f"{message}\n{warning}" if warning else message, ephemeral=True)
+
+
+@tree.command(name="logoutfaceit", description="Unlink your FACEIT account and remove your elo role")
+@app_commands.guild_only()
+async def logoutfaceit(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    removed = await elo_roles.forget(interaction.guild, interaction.user.id)
+    await interaction.followup.send(
+        "Unlinked, and your elo role is gone." if removed else "You are not linked.",
+        ephemeral=True)
+
+
+@tasks.loop(minutes=REFRESH_MINUTES)
+async def refresh_elo_roles():
+    for guild_id in links.guild_ids():
+        guild = client.get_guild(guild_id)
+        if guild is None:
+            continue
+        try:
+            await elo_roles.sync(guild)
+        except (FaceitError, elo_roles.RoleSyncError, discord.HTTPException) as exc:
+            print(f"elo role sync failed in {guild.name}: {exc}", flush=True)
+
+
+@refresh_elo_roles.before_loop
+async def _wait_for_login():
+    await client.wait_until_ready()
+
+
 @tree.error
 async def on_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     cause = error.__cause__ if isinstance(error, app_commands.CommandInvokeError) else error
-    message = str(cause) if isinstance(cause, FaceitError) else "Something went wrong."
-    if not isinstance(cause, FaceitError):
+    shown = (FaceitError, elo_roles.RoleSyncError)
+    message = str(cause) if isinstance(cause, shown) else "Something went wrong."
+    if isinstance(cause, discord.Forbidden):
+        message = "I do not have permission to manage roles here."
+    elif not isinstance(cause, shown):
         print(f"Unhandled command error: {error!r}", flush=True)
     if interaction.response.is_done():
         await interaction.followup.send(message, ephemeral=True)

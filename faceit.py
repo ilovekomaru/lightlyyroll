@@ -19,6 +19,7 @@ USER_AGENT = "lightlyyroll-discord-bot"
 TIMEOUT = 10
 
 USER_URL = "https://www.faceit.com/api/users/v1/nicknames/{nickname}"
+USER_BY_ID_URL = "https://www.faceit.com/api/users/v1/users/{player_id}"
 SEARCH_URL = "https://www.faceit.com/api/searcher/v1/players"
 STATS_URL = "https://www.faceit.com/api/stats/v1/stats/time/users/{player_id}/games/cs2"
 
@@ -103,6 +104,16 @@ async def player(nickname: str) -> Player:
             raise
         payload = await _profile(canonical)
 
+    return _to_player(payload)
+
+
+async def player_by_id(player_id: str) -> Player:
+    """Look up by the stable player id, which survives a FACEIT nickname change."""
+    payload = (await _get(USER_BY_ID_URL.format(player_id=quote(player_id, safe=""))))["payload"]
+    return _to_player(payload)
+
+
+def _to_player(payload: dict) -> Player:
     cs2 = payload.get("games", {}).get("cs2")
     if not cs2:
         raise FaceitError(f"**{payload['nickname']}** has no CS2 profile on FACEIT.")
