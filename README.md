@@ -1,9 +1,17 @@
 # lightlyyroll
 
-A minimal Discord bot with one slash command:
+A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 
-- `/roll` — random number 0–100
-- `/roll <number>` — random number 0–`<number>`
+| Command | What it does |
+| --- | --- |
+| `/roll` | Random number 0–100 |
+| `/roll <number>` | Random number 0–`<number>` |
+| `/elo <nickname>` | Player's current CS2 ELO |
+| `/stats <nickname>` | K/D/A, K/D, K/R, HS%, ADR and win rate |
+| `/avg <nickname>` | Average kills per match |
+
+Every FACEIT reply is an embed carrying the player's avatar, nickname, country flag and
+skill-level badge, tinted with that level's colour.
 
 ## 1. Discord setup
 
@@ -11,6 +19,49 @@ A minimal Discord bot with one slash command:
 2. **Bot** tab → **Reset Token** → copy it. No privileged intents are needed.
 3. **OAuth2 → URL Generator** → scopes `bot` + `applications.commands`, bot permission
    `Send Messages`. Open the generated URL to invite the bot to your server.
+
+## FACEIT data
+
+`faceit.py` reads the same undocumented JSON endpoints that faceit.com's own web app uses,
+so no API key is needed and the numbers match a player's profile page exactly:
+
+```
+/api/users/v1/nicknames/<nickname>              nickname, avatar, country, ELO
+/api/stats/v1/stats/time/users/<id>/games/cs2   per-match stats
+```
+
+`/stats` and `/avg` average the **last 30 matches** (`MATCH_WINDOW` in `bot.py`) — the same
+default the FACEIT Forecast extension uses (`sliderValue: 30`). Ratios are computed from
+summed totals (total kills ÷ total deaths, total damage ÷ total rounds), not by averaging
+each match's own ratio; only the former reproduces the figures the site displays.
+
+The per-match payload uses opaque keys; the mapping is documented at the top of `faceit.py`
+and was verified against the payload's own ratio fields across a full match window.
+
+Two things worth knowing:
+
+- **Requests go through `urllib`, not `aiohttp`.** FACEIT's CDN rejects aiohttp's TLS
+  signature on the stats endpoint with a 403 no matter what headers are sent, while plain
+  `urllib` with an honest bot User-Agent is served normally. The blocking calls run in a
+  worker thread so the event loop keeps running. Do not "simplify" this back to aiohttp.
+- **These endpoints are undocumented and sit behind bot management.** They work from a
+  residential IP; a datacenter IP may be treated differently. If the server starts getting
+  403s, switch to the official Data API at https://developers.faceit.com (free key, but it
+  serves lifetime stats only and has no ADR).
+
+## Level badges
+
+`assets/faceit/` holds skill-level badges 1–20, as `.svg` (source) and `.png` (what Discord
+embeds actually display — Discord does not render SVG).
+
+FACEIT's own scale stops at level 10 (2001+ ELO). Levels 11–20 subdivide everything above
+that, using the thresholds and artwork of the **FACEIT Forecast** browser extension, so a
+player at 2396 ELO shows as level 11 here and level 10 on faceit.com. The ELO table and
+per-level colours live in `levels.py`.
+
+The badges were rebuilt from the extension's own drawing code rather than copied, since it
+ships no image files — it assembles each badge at runtime from a colour, an arc path and
+digit glyphs.
 
 ## 2. Local development (Windows / PyCharm)
 
