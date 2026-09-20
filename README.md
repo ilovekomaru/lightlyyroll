@@ -52,7 +52,8 @@ Two things worth knowing:
 ## Level badges
 
 `assets/faceit/` holds skill-level badges 1–20, as `.svg` (source) and `.png` (what Discord
-embeds actually display — Discord does not render SVG).
+embeds actually display — Discord does not render SVG). The badges sit on an opaque `#242429`
+backdrop rather than transparency, so they look the same in Discord's light and dark themes.
 
 FACEIT's own scale stops at level 10 (2001+ ELO). Levels 11–20 subdivide everything above
 that, using the thresholds and artwork of the **FACEIT Forecast** browser extension, so a
