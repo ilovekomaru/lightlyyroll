@@ -52,9 +52,15 @@ each match's own ratio; only the former reproduces the figures the site displays
 
 `/today` filters the same payload by each match's `date` against the most recent 03:00 GMT
 boundary (`DAY_RESET_HOUR`). It reports the day's net elo swing and the last few results as
-a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5), wins green and losses
-red inside an `ansi` code block — clients that do not render those fall back to plain
-letters, which still read correctly. The endpoint returns
+a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5), with a green W and a red
+L.
+
+The coloured letters are **application emoji** (`assets/win.png`, `assets/loss.png`),
+uploaded once on first startup and reused after. They belong to the bot rather than a
+server, so they render in every guild and in DMs with no per-server setup, and no Manage
+Expressions permission. Discord colours plain text nowhere else — the alternative is an
+`ansi` code block, which draws a border around the whole line. If the upload fails the run
+falls back to plain letters. The endpoint returns
 matches newest first, so the run is reversed for reading order.
 
 The per-match payload uses opaque keys; the mapping is documented at the top of `faceit.py`

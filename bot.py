@@ -3,6 +3,7 @@ import io
 import os
 import random
 import sys
+from pathlib import Path
 
 import discord
 from discord import app_commands
@@ -25,6 +26,7 @@ MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 REFRESH_MINUTES = 5  # one batched FACEIT request per cycle, whatever the member count
 RESULT_RUN = 5       # most recent results shown by /today
+ASSETS = Path(__file__).parent / "assets"
 
 if not TOKEN:
     sys.exit("DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token.")
@@ -36,6 +38,10 @@ class RollBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
+        try:
+            await ensure_result_emoji()
+        except discord.HTTPException as exc:
+            print(f"could not set up result emoji, falling back to letters: {exc}", flush=True)
         refresh_elo_roles.start()
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
@@ -101,12 +107,30 @@ async def elo(interaction: discord.Interaction, nickname: str = None,
                                     files=[file, discord.File(io.BytesIO(image), "elo.png")])
 
 
+RESULT_EMOJI: dict[bool, str] = {}
+
+
+async def ensure_result_emoji() -> None:
+    """Upload the green W and red L once as application emoji.
+
+    Application emoji belong to the bot rather than a server, so they render in
+    every guild and in DMs with no per-server setup.
+    """
+    existing = {emoji.name: emoji for emoji in await client.fetch_application_emojis()}
+    for name, won in (("fcwin", True), ("fcloss", False)):
+        emoji = existing.get(name)
+        if emoji is None:
+            image = (ASSETS / ("win.png" if won else "loss.png")).read_bytes()
+            emoji = await client.create_application_emoji(name=name, image=image)
+        RESULT_EMOJI[won] = str(emoji)
+
+
 def result_run(results: tuple[bool, ...]) -> str:
-    """Wins green, losses red. Discord only colours text inside an ansi code block;
-    clients that do not support it fall back to plain letters, which still read fine."""
-    green, red, reset = "\u001b[0;32m", "\u001b[0;31m", "\u001b[0m"
-    run = " ".join(f"{green}W{reset}" if won else f"{red}L{reset}" for won in results)
-    return f"```ansi\n{run}\n```"
+    """Wins green, losses red. Falls back to plain letters if the emoji are missing,
+    which is the only way to colour text without wrapping it in a code block."""
+    if RESULT_EMOJI:
+        return " ".join(RESULT_EMOJI[won] for won in results)
+    return " ".join("W" if won else "L" for won in results)
 
 
 def add_stat_fields(embed: discord.Embed, data: faceit.Stats) -> None:
