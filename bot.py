@@ -23,7 +23,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 OWNER_ID = int(os.getenv("OWNER_ID") or 0)
 MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
-REFRESH_MINUTES = 15
+REFRESH_MINUTES = 5  # one batched FACEIT request per cycle, whatever the member count
 
 if not TOKEN:
     sys.exit("DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token.")
@@ -193,6 +193,18 @@ async def announce(guild: discord.Guild, changes: list[elo_roles.LevelChange]) -
                          f"{change.player.elo} elo • was level {change.before}"))
         embed.set_thumbnail(url=f"attachment://{icon.name}")
         await channel.send(embed=embed, file=discord.File(icon, filename=icon.name))
+
+
+@tree.command(name="logoutfaceitforce", description="Unlink someone else's FACEIT account")
+@app_commands.describe(member="Who to unlink")
+@app_commands.guild_only()
+@owner_only()
+async def logoutfaceitforce(interaction: discord.Interaction, member: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    removed = await elo_roles.forget(interaction.guild, member.id)
+    await interaction.followup.send(
+        f"Unlinked {member.mention} and removed their elo role." if removed
+        else f"{member.mention} is not linked.", ephemeral=True)
 
 
 @tasks.loop(minutes=REFRESH_MINUTES)

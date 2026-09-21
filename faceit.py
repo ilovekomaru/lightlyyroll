@@ -20,6 +20,7 @@ TIMEOUT = 10
 
 USER_URL = "https://www.faceit.com/api/users/v1/nicknames/{nickname}"
 USER_BY_ID_URL = "https://www.faceit.com/api/users/v1/users/{player_id}"
+USERS_URL = "https://www.faceit.com/api/users/v1/users"
 SEARCH_URL = "https://www.faceit.com/api/searcher/v1/players"
 STATS_URL = "https://www.faceit.com/api/stats/v1/stats/time/users/{player_id}/games/cs2"
 
@@ -111,6 +112,21 @@ async def player_by_id(player_id: str) -> Player:
     """Look up by the stable player id, which survives a FACEIT nickname change."""
     payload = (await _get(USER_BY_ID_URL.format(player_id=quote(player_id, safe=""))))["payload"]
     return _to_player(payload)
+
+
+async def players_by_ids(player_ids: list[str]) -> dict[str, Player]:
+    """Look up many players in a single request, keyed by player id.
+
+    The endpoint takes a repeated `id` parameter. A comma-separated `ids` is
+    accepted but silently ignored, returning arbitrary players, so do not use it.
+    Players without a CS2 profile are left out rather than failing the batch.
+    """
+    if not player_ids:
+        return {}
+    query = urlencode([("id", player_id) for player_id in player_ids])
+    payload = (await _get(f"{USERS_URL}?{query}"))["payload"]
+    return {entry["id"]: _to_player(entry)
+            for entry in payload if entry.get("games", {}).get("cs2")}
 
 
 def _to_player(payload: dict) -> Player:

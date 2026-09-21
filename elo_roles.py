@@ -54,13 +54,18 @@ async def sync(guild: discord.Guild) -> list[LevelChange]:
     if not guild.me.guild_permissions.manage_roles:
         raise RoleSyncError("I need the **Manage Roles** permission to do this.")
 
+    # One request for everyone, so the refresh rate does not scale with member count.
+    players = await faceit.players_by_ids([e["player_id"] for e in entries.values()])
+
     ranked = []
     for user_id, entry in list(entries.items()):
         member = await _member(guild, int(user_id))
         if member is None:
             await _drop(guild, int(user_id), entry)
             continue
-        player = await faceit.player_by_id(entry["player_id"])
+        player = players.get(entry["player_id"])
+        if player is None:
+            continue
         if player.nickname != entry.get("nickname"):
             links.update(guild.id, int(user_id), nickname=player.nickname)
         ranked.append((member, entry, player))

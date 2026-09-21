@@ -13,6 +13,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/logoutfaceit` | Unlink and remove that role |
 | `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
 | `/loginfaceitforce <member> <nickname>` | Link someone else — owner only |
+| `/logoutfaceitforce <member>` | Unlink someone else — owner only |
 
 Every FACEIT reply is an embed carrying the player's avatar, nickname, country flag and
 skill-level badge, tinted with that level's colour.
@@ -65,8 +66,13 @@ Two things worth knowing:
 `/loginfaceit` gives each linked member their own hoisted role, named `<elo> <nickname>`
 (e.g. `2396 el0t3rrorist`) and coloured by their skill level. Discord groups the member list by each member's highest
 hoisted role and orders those groups by role position, so keeping the roles sorted by elo
-turns the sidebar into a live leaderboard. A background task refreshes every 15 minutes
+turns the sidebar into a live leaderboard. A background task refreshes every 5 minutes
 (`REFRESH_MINUTES` in `bot.py`) and reorders everything in a single API call.
+
+Every member's elo comes from **one** batched FACEIT request per refresh, via the repeated
+`id` parameter on `/api/users/v1/users`, so polling cost does not grow with member count.
+Note that the comma-separated `ids=` form is accepted but silently ignored — it returns
+arbitrary players rather than the ones asked for, so it must not be used.
 
 **One manual setup step.** Discord will not let a bot place a role above its own, so drag
 the bot's role to the **top** of the server's role list once. Until that is done, elo roles
