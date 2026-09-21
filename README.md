@@ -7,7 +7,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/roll` | Random number 0–100 |
 | `/roll <number>` | Random number 0–`<number>` |
 | `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
-| `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR and win rate |
+| `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR, win rate and the last 5 results |
 | `/today [nickname]` | The same stats, but only for matches since 03:00 GMT |
 | `/avg [nickname]` | Average kills per match |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |

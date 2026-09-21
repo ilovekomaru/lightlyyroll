@@ -149,6 +149,7 @@ async def stats(interaction: discord.Interaction, nickname: str = None):
     player = await resolve(interaction, nickname)
     data = await faceit.recent_stats(player.id, MATCH_WINDOW)
     embed, file = player_card(player)
+    embed.description = result_run(data.results[-RESULT_RUN:])
     add_stat_fields(embed, data)
     embed.set_footer(text=f"Last {data.matches} matches")
     await interaction.followup.send(embed=embed, file=file)
