@@ -6,10 +6,10 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | --- | --- |
 | `/roll` | Random number 0–100 |
 | `/roll <number>` | Random number 0–`<number>` |
-| `/elo <nickname> [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
-| `/stats <nickname>` | K/D/A, K/D, K/R, HS%, ADR and win rate |
-| `/today <nickname>` | The same stats, but only for matches since 03:00 GMT |
-| `/avg <nickname>` | Average kills per match |
+| `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
+| `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR and win rate |
+| `/today [nickname]` | The same stats, but only for matches since 03:00 GMT |
+| `/avg [nickname]` | Average kills per match |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
 | `/logoutfaceit` | Unlink and remove that role |
 | `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
@@ -17,7 +17,9 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/logoutfaceitforce <member>` | Unlink someone else — owner only |
 
 Every FACEIT reply is an embed carrying the player's avatar, nickname, country flag and
-skill-level badge, tinted with that level's colour.
+skill-level badge, tinted with that level's colour. The lookup commands take the nickname
+as optional: left out, they use the caller's own linked account (this guild first, then any
+guild they linked in, so it also works in a DM).
 
 ## 1. Discord setup
 

@@ -69,6 +69,21 @@ def unlink(guild_id: int, user_id: int) -> dict | None:
     return entry
 
 
+def find_player(user_id: int, guild_id: int | None = None) -> dict | None:
+    """The member's linked account: this guild first, then any guild they linked in,
+    so the lookup commands still work in a DM or a server they linked elsewhere."""
+    guilds = _read()["links"]
+    if guild_id is not None:
+        here = guilds.get(str(guild_id), {}).get(str(user_id))
+        if here:
+            return here
+    for entries in guilds.values():
+        entry = entries.get(str(user_id))
+        if entry:
+            return entry
+    return None
+
+
 def channel_id(guild_id: int) -> int | None:
     found = _read()["channels"].get(str(guild_id))
     return int(found) if found else None

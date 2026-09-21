@@ -69,6 +69,20 @@ def player_card(player: Player) -> tuple[discord.Embed, discord.File]:
     return embed, file
 
 
+async def resolve(interaction: discord.Interaction, nickname: str | None) -> Player:
+    """The nickname given, or the caller's own linked account when it is left out."""
+    if nickname:
+        return await faceit.player(nickname)
+    guild_id = interaction.guild.id if interaction.guild else None
+    entry = links.find_player(interaction.user.id, guild_id)
+    if entry is None:
+        raise FaceitError("Give a nickname, or run `/loginfaceit` to link your account.")
+    return await faceit.player_by_id(entry["player_id"])
+
+
+NICKNAME_HELP = "FACEIT nickname (defaults to your linked account)"
+
+
 @tree.command(name="roll", description="Roll a random number")
 @app_commands.describe(maximum="Upper bound of the roll (default 100)")
 async def roll(interaction: discord.Interaction, maximum: app_commands.Range[int, 1, 1_000_000] = 100):
@@ -76,11 +90,11 @@ async def roll(interaction: discord.Interaction, maximum: app_commands.Range[int
 
 
 @tree.command(name="elo", description="Show a player's FACEIT CS2 elo and recent trend")
-@app_commands.describe(nickname="FACEIT nickname", matches="Matches to plot (default 30, max 100)")
-async def elo(interaction: discord.Interaction, nickname: str,
+@app_commands.describe(nickname=NICKNAME_HELP, matches="Matches to plot (default 30, max 100)")
+async def elo(interaction: discord.Interaction, nickname: str = None,
               matches: app_commands.Range[int, 2, MAX_HISTORY] = MATCH_WINDOW):
     await interaction.response.defer()
-    player = await faceit.player(nickname)
+    player = await resolve(interaction, nickname)
     history = await faceit.elo_history(player.id, matches)
     embed, file = player_card(player)
 
@@ -103,10 +117,10 @@ def add_stat_fields(embed: discord.Embed, data: faceit.Stats) -> None:
 
 
 @tree.command(name="stats", description="Show a player's recent FACEIT CS2 stats")
-@app_commands.describe(nickname="FACEIT nickname")
-async def stats(interaction: discord.Interaction, nickname: str):
+@app_commands.describe(nickname=NICKNAME_HELP)
+async def stats(interaction: discord.Interaction, nickname: str = None):
     await interaction.response.defer()
-    player = await faceit.player(nickname)
+    player = await resolve(interaction, nickname)
     data = await faceit.recent_stats(player.id, MATCH_WINDOW)
     embed, file = player_card(player)
     add_stat_fields(embed, data)
@@ -115,10 +129,10 @@ async def stats(interaction: discord.Interaction, nickname: str):
 
 
 @tree.command(name="today", description="Today's FACEIT CS2 stats, counted from 03:00 GMT")
-@app_commands.describe(nickname="FACEIT nickname")
-async def today(interaction: discord.Interaction, nickname: str):
+@app_commands.describe(nickname=NICKNAME_HELP)
+async def today(interaction: discord.Interaction, nickname: str = None):
     await interaction.response.defer()
-    player = await faceit.player(nickname)
+    player = await resolve(interaction, nickname)
     data = await faceit.stats_today(player.id)
     embed, file = player_card(player)
     if data is None:
@@ -133,10 +147,10 @@ async def today(interaction: discord.Interaction, nickname: str):
 
 
 @tree.command(name="avg", description="Show a player's average kills per match")
-@app_commands.describe(nickname="FACEIT nickname")
-async def avg(interaction: discord.Interaction, nickname: str):
+@app_commands.describe(nickname=NICKNAME_HELP)
+async def avg(interaction: discord.Interaction, nickname: str = None):
     await interaction.response.defer()
-    player = await faceit.player(nickname)
+    player = await resolve(interaction, nickname)
     data = await faceit.recent_stats(player.id, MATCH_WINDOW)
     embed, file = player_card(player)
     embed.add_field(name="Average kills", value=f"{data.kills:.1f}")
