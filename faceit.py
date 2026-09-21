@@ -12,6 +12,7 @@ blocking calls are handed to a worker thread so they do not stall the event loop
 import asyncio
 import json
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from urllib import error, request
 from urllib.parse import quote, urlencode
 
@@ -28,6 +29,9 @@ STATS_URL = "https://www.faceit.com/api/stats/v1/stats/time/users/{player_id}/ga
 # and cross-checked against the payload's own ratio fields (c2=K/D, c3=K/R, c4=HS%, c10=ADR).
 KILLS, ASSISTS, DEATHS, WIN = "i6", "i7", "i8", "i10"
 ROUNDS, HEADSHOTS, DAMAGE = "i12", "i13", "i20"
+
+DAY_RESET_HOUR = 3  # a FACEIT "day" is counted from 03:00 GMT
+MAX_PAGE = 100      # the stats endpoint refuses larger pages
 
 
 class FaceitError(Exception):
@@ -58,6 +62,8 @@ class Stats:
     headshot_pct: float
     adr: float
     win_rate: float
+    elo_delta: int
+    results: tuple[bool, ...]  # one per match, oldest first
 
 
 def _fetch(url: str):
@@ -68,6 +74,8 @@ def _fetch(url: str):
     except error.HTTPError as exc:
         if exc.code == 404:
             raise PlayerNotFound("Player not found on FACEIT.") from exc
+        if exc.code == 429:
+            raise FaceitError("FACEIT is rate limiting us. Try again in a minute.") from exc
         raise FaceitError(f"FACEIT returned HTTP {exc.code}.") from exc
     except (error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise FaceitError("Could not reach FACEIT.") from exc
@@ -156,8 +164,28 @@ async def elo_history(player_id: str, size: int = 30) -> list[int]:
     return [int(match["elo"]) for match in reversed(matches) if match.get("elo") is not None]
 
 
+def day_start() -> int:
+    """Epoch ms of the most recent 03:00 GMT boundary."""
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=DAY_RESET_HOUR, minute=0, second=0, microsecond=0)
+    if now < start:
+        start -= timedelta(days=1)
+    return int(start.timestamp() * 1000)
+
+
 async def recent_stats(player_id: str, size: int = 30) -> Stats:
-    matches = await _matches(player_id, size)
+    return _aggregate(await _matches(player_id, size))
+
+
+async def stats_today(player_id: str) -> Stats | None:
+    """Stats since the 03:00 GMT reset, or None if nothing has been played."""
+    since = day_start()
+    played = [match for match in await _matches(player_id, MAX_PAGE)
+              if int(match["date"]) >= since]
+    return _aggregate(played) if played else None
+
+
+def _aggregate(matches: list[dict]) -> Stats:
 
     def total(key: str) -> float:
         return sum(float(match[key]) for match in matches)
@@ -177,4 +205,7 @@ async def recent_stats(player_id: str, size: int = 30) -> Stats:
         headshot_pct=total(HEADSHOTS) / kills * 100,
         adr=total(DAMAGE) / rounds,
         win_rate=total(WIN) / played * 100,
+        elo_delta=sum(int(match.get("elo_delta") or 0) for match in matches),
+        # the endpoint returns newest first, so reverse into reading order
+        results=tuple(float(match[WIN]) == 1 for match in reversed(matches)),
     )

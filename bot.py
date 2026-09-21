@@ -24,6 +24,7 @@ OWNER_ID = int(os.getenv("OWNER_ID") or 0)
 MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 REFRESH_MINUTES = 5  # one batched FACEIT request per cycle, whatever the member count
+RESULT_RUN = 5       # most recent results shown by /today
 
 if not TOKEN:
     sys.exit("DISCORD_TOKEN is not set. Copy .env.example to .env and fill in your bot token.")
@@ -92,6 +93,15 @@ async def elo(interaction: discord.Interaction, nickname: str,
                                     files=[file, discord.File(io.BytesIO(image), "elo.png")])
 
 
+def add_stat_fields(embed: discord.Embed, data: faceit.Stats) -> None:
+    embed.add_field(name="K/D/A", value=f"{data.kills:.0f} / {data.deaths:.0f} / {data.assists:.0f}")
+    embed.add_field(name="K/D", value=f"{data.kd:.2f}")
+    embed.add_field(name="K/R", value=f"{data.kr:.2f}")
+    embed.add_field(name="HS", value=f"{data.headshot_pct:.0f}%")
+    embed.add_field(name="ADR", value=f"{data.adr:.1f}")
+    embed.add_field(name="Win Rate", value=f"{data.win_rate:.0f}%")
+
+
 @tree.command(name="stats", description="Show a player's recent FACEIT CS2 stats")
 @app_commands.describe(nickname="FACEIT nickname")
 async def stats(interaction: discord.Interaction, nickname: str):
@@ -99,13 +109,26 @@ async def stats(interaction: discord.Interaction, nickname: str):
     player = await faceit.player(nickname)
     data = await faceit.recent_stats(player.id, MATCH_WINDOW)
     embed, file = player_card(player)
-    embed.add_field(name="K/D/A", value=f"{data.kills:.0f} / {data.deaths:.0f} / {data.assists:.0f}")
-    embed.add_field(name="K/D", value=f"{data.kd:.2f}")
-    embed.add_field(name="K/R", value=f"{data.kr:.2f}")
-    embed.add_field(name="HS", value=f"{data.headshot_pct:.0f}%")
-    embed.add_field(name="ADR", value=f"{data.adr:.1f}")
-    embed.add_field(name="Win Rate", value=f"{data.win_rate:.0f}%")
+    add_stat_fields(embed, data)
     embed.set_footer(text=f"Last {data.matches} matches")
+    await interaction.followup.send(embed=embed, file=file)
+
+
+@tree.command(name="today", description="Today's FACEIT CS2 stats, counted from 03:00 GMT")
+@app_commands.describe(nickname="FACEIT nickname")
+async def today(interaction: discord.Interaction, nickname: str):
+    await interaction.response.defer()
+    player = await faceit.player(nickname)
+    data = await faceit.stats_today(player.id)
+    embed, file = player_card(player)
+    if data is None:
+        embed.description = "No matches played today."
+    else:
+        run = " ".join("W" if won else "L" for won in data.results[-RESULT_RUN:])
+        embed.description = f"**{run}**"
+        add_stat_fields(embed, data)
+        plural = "match" if data.matches == 1 else "matches"
+        embed.set_footer(text=f"{data.matches} {plural} today • {data.elo_delta:+} elo")
     await interaction.followup.send(embed=embed, file=file)
 
 

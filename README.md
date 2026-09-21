@@ -8,6 +8,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/roll <number>` | Random number 0–`<number>` |
 | `/elo <nickname> [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats <nickname>` | K/D/A, K/D, K/R, HS%, ADR and win rate |
+| `/today <nickname>` | The same stats, but only for matches since 03:00 GMT |
 | `/avg <nickname>` | Average kills per match |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
 | `/logoutfaceit` | Unlink and remove that role |
@@ -47,8 +48,17 @@ default the FACEIT Forecast extension uses (`sliderValue: 30`). Ratios are compu
 summed totals (total kills ÷ total deaths, total damage ÷ total rounds), not by averaging
 each match's own ratio; only the former reproduces the figures the site displays.
 
+`/today` filters the same payload by each match's `date` against the most recent 03:00 GMT
+boundary (`DAY_RESET_HOUR`). It reports the day's net elo swing and the last few results as
+a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5). The endpoint returns
+matches newest first, so the run is reversed for reading order.
+
 The per-match payload uses opaque keys; the mapping is documented at the top of `faceit.py`
 and was verified against the payload's own ratio fields across a full match window.
+
+The stats endpoint **does** return 429 under heavy use — it was tripped during development
+by repeated 100-match pages — and that surfaces as a plain "try again in a minute" message.
+The role refresh is unaffected: it uses the batched users endpoint, one request per cycle.
 
 Two things worth knowing:
 
