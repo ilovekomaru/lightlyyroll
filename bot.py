@@ -167,8 +167,9 @@ async def today(interaction: discord.Interaction, nickname: str = None):
     else:
         embed.description = result_run(data.results[-RESULT_RUN:])
         add_stat_fields(embed, data)
-        plural = "match" if data.matches == 1 else "matches"
-        embed.set_footer(text=f"{data.matches} {plural} today • {data.elo_delta:+} elo")
+        wins = sum(data.results)
+        embed.set_footer(
+            text=f"{wins}W {data.matches - wins}L • {data.elo_delta:+} elo")
     await interaction.followup.send(embed=embed, file=file)
 
 
