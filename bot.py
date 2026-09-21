@@ -49,12 +49,6 @@ client = RollBot()
 tree = client.tree
 
 
-def flag(country: str) -> str:
-    if len(country) != 2 or not country.isalpha():
-        return ""
-    return "".join(chr(0x1F1E6 + ord(c) - ord("a")) for c in country.lower())
-
-
 def player_card(player: Player) -> tuple[discord.Embed, discord.File]:
     """Embed carrying the player's avatar, nickname and level badge."""
     level = levels.level_for_elo(player.elo)
@@ -62,7 +56,7 @@ def player_card(player: Player) -> tuple[discord.Embed, discord.File]:
     file = discord.File(icon, filename=icon.name)
 
     embed = discord.Embed(title=f"{player.elo} ELO", colour=levels.LEVEL_COLOR[level])
-    embed.set_author(name=f"{player.nickname} {flag(player.country)}".strip(),
+    embed.set_author(name=player.nickname,
                      url=f"https://www.faceit.com/en/players/{player.nickname}",
                      icon_url=player.avatar)
     embed.set_thumbnail(url=f"attachment://{icon.name}")
@@ -107,6 +101,14 @@ async def elo(interaction: discord.Interaction, nickname: str = None,
                                     files=[file, discord.File(io.BytesIO(image), "elo.png")])
 
 
+def result_run(results: tuple[bool, ...]) -> str:
+    """Wins green, losses red. Discord only colours text inside an ansi code block;
+    clients that do not support it fall back to plain letters, which still read fine."""
+    green, red, reset = "\u001b[0;32m", "\u001b[0;31m", "\u001b[0m"
+    run = " ".join(f"{green}W{reset}" if won else f"{red}L{reset}" for won in results)
+    return f"```ansi\n{run}\n```"
+
+
 def add_stat_fields(embed: discord.Embed, data: faceit.Stats) -> None:
     embed.add_field(name="K/D/A", value=f"{data.kills:.0f} / {data.deaths:.0f} / {data.assists:.0f}")
     embed.add_field(name="K/D", value=f"{data.kd:.2f}")
@@ -138,8 +140,7 @@ async def today(interaction: discord.Interaction, nickname: str = None):
     if data is None:
         embed.description = "No matches played today."
     else:
-        run = " ".join("W" if won else "L" for won in data.results[-RESULT_RUN:])
-        embed.description = f"**{run}**"
+        embed.description = result_run(data.results[-RESULT_RUN:])
         add_stat_fields(embed, data)
         plural = "match" if data.matches == 1 else "matches"
         embed.set_footer(text=f"{data.matches} {plural} today • {data.elo_delta:+} elo")

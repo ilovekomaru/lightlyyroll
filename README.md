@@ -16,8 +16,8 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/loginfaceitforce <member> <nickname>` | Link someone else — owner only |
 | `/logoutfaceitforce <member>` | Unlink someone else — owner only |
 
-Every FACEIT reply is an embed carrying the player's avatar, nickname, country flag and
-skill-level badge, tinted with that level's colour. The lookup commands take the nickname
+Every FACEIT reply is an embed carrying the player's avatar, nickname and skill-level
+badge, tinted with that level's colour. The lookup commands take the nickname
 as optional: left out, they use the caller's own linked account (this guild first, then any
 guild they linked in, so it also works in a DM).
 
@@ -52,7 +52,9 @@ each match's own ratio; only the former reproduces the figures the site displays
 
 `/today` filters the same payload by each match's `date` against the most recent 03:00 GMT
 boundary (`DAY_RESET_HOUR`). It reports the day's net elo swing and the last few results as
-a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5). The endpoint returns
+a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5), wins green and losses
+red inside an `ansi` code block — clients that do not render those fall back to plain
+letters, which still read correctly. The endpoint returns
 matches newest first, so the run is reversed for reading order.
 
 The per-match payload uses opaque keys; the mapping is documented at the top of `faceit.py`
