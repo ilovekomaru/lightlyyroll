@@ -14,7 +14,7 @@ from matplotlib.colors import LinearSegmentedColormap, to_rgb
 from matplotlib.figure import Figure
 
 SURFACE = "#242429"
-SERIES = "#C98500"
+SERIES = "#CA5325"
 GRID = "#2F2F35"
 INK_MUTED = "#8E8E98"
 INK_PRIMARY = "#FFFFFF"
