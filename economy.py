@@ -105,6 +105,26 @@ def settle(guild_id: int, user_id: int, income: int, delta: int) -> int:
     return entry["coins"]
 
 
+def settle_pot(guild_id: int, winner_id: int, winner_income: int,
+               loser_id: int, loser_income: int, stake: int) -> int:
+    """Move a stake from loser to winner in one write, and return what actually moved.
+
+    Settling the two sides with separate calls could create coins: a loser short of
+    the stake pays only what they hold, while the winner is credited the full amount.
+    Moving the affordable amount keeps the total supply fixed no matter what.
+    """
+    data = _read()
+    now = time.time()
+    winner, _ = _entry(data, guild_id, winner_id, winner_income, now)
+    loser, _ = _entry(data, guild_id, loser_id, loser_income, now)
+
+    moved = min(stake, loser["coins"])
+    loser["coins"] -= moved
+    winner["coins"] += moved
+    _write(data)
+    return moved
+
+
 def transfer(guild_id: int, sender_id: int, sender_income: int,
              recipient_id: int, recipient_income: int, amount: int) -> tuple[int, int]:
     """Move coins between two members. Returns the sender's balance and gift allowance left."""

@@ -126,6 +126,22 @@ class CoinFlip(discord.ui.View):
                 ephemeral=True)
             return
 
+        # The challenger was checked when they opened the flip, but that was up to
+        # 90 seconds ago and they may have spent the coins since.
+        challenger_income = self.income_for(guild_id, self.challenger.id)
+        challenger = economy.account(guild_id, self.challenger.id, challenger_income)
+        if challenger["coins"] < self.stake:
+            button.disabled = True
+            self.stop()
+            await interaction.response.edit_message(
+                embed=discord.Embed(
+                    title="\U0001FA99 Flip cancelled",
+                    description=f"**{self.challenger.display_name}** can no longer cover "
+                                f"the {self.stake} coin stake.",
+                    colour=LOSE_COLOUR),
+                view=self)
+            return
+
         self.opponent = interaction.user
         button.disabled = True
         self.stop()
@@ -133,8 +149,8 @@ class CoinFlip(discord.ui.View):
         side = random.choice(["Heads", "Tails"])
         winner, loser = ((self.challenger, self.opponent) if side == "Heads"
                          else (self.opponent, self.challenger))
-        economy.settle(guild_id, winner.id, self.income_for(guild_id, winner.id), self.stake)
-        economy.settle(guild_id, loser.id, self.income_for(guild_id, loser.id), -self.stake)
+        economy.settle_pot(guild_id, winner.id, self.income_for(guild_id, winner.id),
+                           loser.id, self.income_for(guild_id, loser.id), self.stake)
 
         embed = discord.Embed(
             title=f"\U0001FA99 {side}",
@@ -154,17 +170,19 @@ class CoinFlip(discord.ui.View):
 def setup(tree: app_commands.CommandTree, income_for) -> None:
     """`income_for(guild_id, user_id)` gives a member's weekly coin income."""
 
-    async def stake(interaction: discord.Interaction, bet: int) -> bool:
-        """Validate and take the bet up front. False means the caller was told why not."""
+    async def stake(interaction: discord.Interaction, bet: int) -> int | None:
+        """Take the bet up front. None means the caller was told why not; otherwise
+        the weekly income that happened to land on the way in, so it can be shown —
+        coins appearing mid-game with no explanation looks like a bug."""
         income = income_for(interaction.guild.id, interaction.user.id)
-        coins = economy.account(interaction.guild.id, interaction.user.id, income)["coins"]
+        state = economy.account(interaction.guild.id, interaction.user.id, income)
         try:
-            economy.check_bet(coins, bet)
+            economy.check_bet(state["coins"], bet)
         except economy.EconomyError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
-            return False
+            return None
         economy.settle(interaction.guild.id, interaction.user.id, income, -bet)
-        return True
+        return state["credited"]
 
     def pay(interaction: discord.Interaction, amount: int) -> int:
         income = income_for(interaction.guild.id, interaction.user.id)
@@ -174,10 +192,13 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
     @app_commands.describe(bet="Coins to stake")
     @app_commands.guild_only()
     async def slot(interaction: discord.Interaction, bet: int):
-        if not await stake(interaction, bet):
+        credited = await stake(interaction, bet)
+        if credited is None:
             return
         reels = random.choices(SYMBOLS, weights=WEIGHTS, k=3)
         header = f"Staked **{bet}** coins"
+        if credited:
+            header = f"Weekly income of **{credited}** landed · " + header
 
         embed = discord.Embed(title="\U0001F3B0  S L O T S  \U0001F3B0",
                               description=f"{header}\n\n{_panel([BLANK] * 3)}",
@@ -236,7 +257,8 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
             await interaction.response.send_message(embed=embed)
             return
 
-        if not await stake(interaction, bet):
+        credited = await stake(interaction, bet)
+        if credited is None:
             return
         house = sum(random.randint(1, sides) for _ in range(count))
         if total > house:
@@ -249,7 +271,8 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
         coins = pay(interaction, delta)
         _player(embed, interaction.user)
         embed.description = (
-            f"Staked **{bet}** coins\n\n"
+            (f"Weekly income of **{credited}** landed · " if credited else "")
+            + f"Staked **{bet}** coins\n\n"
             + (f"{detail}\n" if detail else "")
             + f"You **{total}** · house **{house}**\n\n"
             f"{line}\n**{delta - bet:+}** coins · balance {coins}")
