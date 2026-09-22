@@ -24,6 +24,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
 | `/loginfaceitforce <member> <nickname>` | Link someone else — owner only |
 | `/logoutfaceitforce <member>` | Unlink someone else — owner only |
+| `/autobet <game> <bet> [times]` | Play slot or dice repeatedly and report the return — owner only |
 
 Every FACEIT reply is an embed carrying the player's avatar, nickname and skill-level
 badge, tinted with that level's colour. The lookup commands take the nickname
@@ -52,6 +53,10 @@ since it is per-deployment state).
 - **Gifts** are capped at 1,000 coins per member per rolling week.
 - `/wheel` and `/roll` stay free. `/slot` and `/coinflip` always stake; `/dice` stakes
   only when given a bet, and otherwise still works as a plain dice roller.
+- `/autobet` (owner only) plays slot or dice up to 1,000 times for real coins and reports
+  the observed return. It settles the whole run in one write rather than twice per round,
+  obeys the same bet limits everyone else has, and stops early rather than going below
+  the minimum stake. Useful for checking a payout change against reality.
 - Slot payouts are 2x a pair, 10x three of a kind and 200x three sevens, which measures
   as a **5.7% house edge** over 400k simulated spins — coins drain slowly rather than
   evaporating. `/coinflip` is player versus player with no rake; `/dice` against the

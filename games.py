@@ -50,6 +50,19 @@ def payout_multiple(reels: list[str]) -> int:
     return PAIR_PAYOUT if any(reels.count(s) == 2 for s in set(reels)) else 0
 
 
+def spin() -> tuple[list[str], int]:
+    """One spin: the reels and what the stake is multiplied by."""
+    reels = random.choices(SYMBOLS, weights=WEIGHTS, k=3)
+    return reels, payout_multiple(reels)
+
+
+def dice_round(count: int, sides: int) -> tuple[int, int, int]:
+    """One roll against the house: your total, theirs, and the stake multiplier."""
+    mine = sum(random.randint(1, sides) for _ in range(count))
+    house = sum(random.randint(1, sides) for _ in range(count))
+    return mine, house, 2 if mine > house else (1 if mine == house else 0)
+
+
 def outcome(reels: list[str]) -> tuple[str, int]:
     """Result line and embed colour for a finished spin."""
     if reels[0] == reels[1] == reels[2]:

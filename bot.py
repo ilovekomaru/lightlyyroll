@@ -3,6 +3,7 @@ import io
 import os
 import random
 import sys
+from collections import Counter
 from pathlib import Path
 
 import discord
@@ -371,6 +372,56 @@ def owner_only():
         return OWNER_ID != 0 and interaction.user.id == OWNER_ID
     predicate.owner_only = True  # /help reads this to keep these out of the list
     return app_commands.check(predicate)
+
+
+@tree.command(name="autobet", description="Play a game repeatedly and report the return")
+@app_commands.describe(game="Which game", bet="Coins per round",
+                       times="How many rounds", notation="Dice to roll, when playing dice")
+@app_commands.choices(game=[app_commands.Choice(name="slot", value="slot"),
+                           app_commands.Choice(name="dice", value="dice")])
+@app_commands.guild_only()
+@owner_only()
+async def autobet(interaction: discord.Interaction, game: app_commands.Choice[str], bet: int,
+                  times: app_commands.Range[int, 1, 1000] = 100, notation: str = "2d6"):
+    income = weekly_income(interaction.guild.id, interaction.user.id)
+    start = economy.account(interaction.guild.id, interaction.user.id, income)["coins"]
+    economy.check_bet(start, bet)
+    count, sides = games.parse_dice(notation) if game.value == "dice" else (0, 0)
+
+    # The whole run is played in memory and settled once, rather than writing the
+    # balance file twice per round.
+    coins, staked, returned, rounds = start, 0, 0, 0
+    tally = Counter()
+    for _ in range(times):
+        if economy.max_bet(coins) < bet:
+            break
+        if game.value == "slot":
+            _, multiple = games.spin()
+            tally[{0: "lose", 2: "pair", games.TRIPLE_PAYOUT: "three of a kind",
+                   games.SEVENS_PAYOUT: "three sevens"}[multiple]] += 1
+        else:
+            _, _, multiple = games.dice_round(count, sides)
+            tally[{0: "lose", 1: "tie", 2: "win"}[multiple]] += 1
+        coins += bet * multiple - bet
+        staked += bet
+        returned += bet * multiple
+        rounds += 1
+
+    economy.settle(interaction.guild.id, interaction.user.id, income, coins - start)
+    label = f"{count}d{sides}" if game.value == "dice" else "slot"
+    embed = discord.Embed(
+        title=f"Autobet — {label}, {bet} coins × {rounds}",
+        description=(f"Balance **{start}** → **{coins}**\n"
+                     f"Staked {staked} · returned {returned} · net **{coins - start:+}**\n"
+                     f"Return **{100 * returned / staked:.2f}%**" if rounds else
+                     "Stopped before the first round."),
+        colour=0xFFC800 if coins >= start else 0xCA5325)
+    if rounds:
+        embed.add_field(name="Outcomes", inline=False, value=" · ".join(
+            f"{name} {n}" for name, n in tally.most_common()))
+    if rounds < times:
+        embed.set_footer(text=f"Stopped after {rounds} of {times} — funds ran low.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @tree.command(name="loginfaceitforce", description="Link someone else's FACEIT account")
