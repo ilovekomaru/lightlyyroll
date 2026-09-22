@@ -22,3 +22,7 @@ __pycache__/
 # OS
 Thumbs.db
 .DS_Store
+
+# Economy state
+economy.json
+economy.json.tmp

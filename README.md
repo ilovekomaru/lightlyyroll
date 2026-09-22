@@ -7,10 +7,13 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/help` | List every command |
 | `/roll` | Random number 0–100 |
 | `/roll <number>` | Random number 0–`<number>` |
-| `/slot` | Slot machine, reels land one at a time |
-| `/dice <2d6>` | Roll dice in `NdM` notation |
+| `/slot <bet>` | Slot machine, reels land one at a time |
+| `/dice <2d6> [bet]` | Roll dice; with a bet, play the house |
 | `/wheel <a, b, c>` | Pick one of your options at random |
-| `/coinflip` | Flip against the first person to join |
+| `/coinflip <bet>` | Flip against the first person to join |
+| `/balance [member]` | Coins, weekly income and gift allowance |
+| `/pay <member> <amount>` | Give coins away |
+| `/rich` | Who holds the most coins |
 | `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR, win rate and the last 5 results |
 | `/today [nickname]` | The same stats, but only for matches since 03:00 GMT |
@@ -33,6 +36,26 @@ guild they linked in, so it also works in a DM).
 2. **Bot** tab → **Reset Token** → copy it. No privileged intents are needed.
 3. **OAuth2 → URL Generator** → scopes `bot` + `applications.commands`, bot permission
    `Send Messages`. Open the generated URL to invite the bot to your server.
+
+## Coins
+
+`economy.py` keeps a per-guild balance for each member in `economy.json` (gitignored,
+since it is per-deployment state).
+
+- **Income** is a member's FACEIT elo per week, or 1,000 without a linked account. It is
+  rolling rather than calendar-based: a week after the last payout, the next economy
+  command credits it. Time away accrues but is capped at 4 weeks so a long absence does
+  not mint a fortune. Elo is read from the cache the role sync keeps on each link, so
+  paying income costs no FACEIT request.
+- **Bets** are at least 10 coins and at most the lesser of 5,000 or half the balance, so
+  nobody goes all in on one spin and the rich cannot distort the server.
+- **Gifts** are capped at 1,000 coins per member per rolling week.
+- `/wheel` and `/roll` stay free. `/slot` and `/coinflip` always stake; `/dice` stakes
+  only when given a bet, and otherwise still works as a plain dice roller.
+- Slot payouts are 2x a pair, 10x three of a kind and 200x three sevens, which measures
+  as a **5.7% house edge** over 400k simulated spins — coins drain slowly rather than
+  evaporating. `/coinflip` is player versus player with no rake; `/dice` against the
+  house is even money with ties refunded.
 
 ## Games
 

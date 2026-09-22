@@ -6,6 +6,14 @@ import re
 import discord
 from discord import app_commands
 
+import economy
+
+# Multipliers on the stake, tuned against the measured spin distribution to leave
+# the house a few percent: coins should drain slowly, not evaporate.
+PAIR_PAYOUT = 2
+TRIPLE_PAYOUT = 10
+SEVENS_PAYOUT = 200
+
 # Eight fairly flat weights, because the chance of three of a kind is the sum of
 # each symbol's cubed probability: fewer or more lopsided symbols make jackpots
 # far too common. These give a pair ~34% of spins, three of a kind ~1 in 58, and
@@ -27,6 +35,13 @@ DICE_PATTERN = re.compile(r"^\s*(\d*)\s*d\s*(\d+)\s*$", re.IGNORECASE)
 
 def _panel(reels: list[str]) -> str:
     return "┃ " + " ┃ ".join(reels) + " ┃"
+
+
+def payout_multiple(reels: list[str]) -> int:
+    """What the stake is multiplied by; 0 means the stake is lost."""
+    if reels[0] == reels[1] == reels[2]:
+        return SEVENS_PAYOUT if reels[0] == SYMBOLS[-1] else TRIPLE_PAYOUT
+    return PAIR_PAYOUT if any(reels.count(s) == 2 for s in set(reels)) else 0
 
 
 def outcome(reels: list[str]) -> tuple[str, int]:
@@ -65,9 +80,11 @@ def parse_options(raw: str) -> list[str]:
 class CoinFlip(discord.ui.View):
     """A challenge anyone but the caller can accept; the first to click plays."""
 
-    def __init__(self, challenger: discord.User):
+    def __init__(self, challenger: discord.User, stake: int, income_for):
         super().__init__(timeout=90)
         self.challenger = challenger
+        self.stake = stake
+        self.income_for = income_for
         self.opponent: discord.User | None = None
 
     @discord.ui.button(label="Join the flip", style=discord.ButtonStyle.primary, emoji="\U0001FA99")
@@ -81,17 +98,30 @@ class CoinFlip(discord.ui.View):
                 "Someone already joined this flip.", ephemeral=True)
             return
 
+        guild_id = interaction.guild.id
+        joiner_income = self.income_for(guild_id, interaction.user.id)
+        joiner = economy.account(guild_id, interaction.user.id, joiner_income)
+        if joiner["coins"] < self.stake:
+            await interaction.response.send_message(
+                f"You need {self.stake} coins to join. You have {joiner['coins']}.",
+                ephemeral=True)
+            return
+
         self.opponent = interaction.user
         button.disabled = True
         self.stop()
 
         side = random.choice(["Heads", "Tails"])
-        winner = self.challenger if side == "Heads" else self.opponent
+        winner, loser = ((self.challenger, self.opponent) if side == "Heads"
+                         else (self.opponent, self.challenger))
+        economy.settle(guild_id, winner.id, self.income_for(guild_id, winner.id), self.stake)
+        economy.settle(guild_id, loser.id, self.income_for(guild_id, loser.id), -self.stake)
+
         embed = discord.Embed(
             title=f"\U0001FA99 {side}",
             description=(f"{self.challenger.mention} called heads, "
                          f"{self.opponent.mention} got tails.\n\n"
-                         f"**{winner.display_name} wins.**"),
+                         f"**{winner.display_name} wins {self.stake} coins.**"),
             colour=PAIR_COLOUR)
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -100,10 +130,31 @@ class CoinFlip(discord.ui.View):
             child.disabled = True
 
 
-def setup(tree: app_commands.CommandTree) -> None:
+def setup(tree: app_commands.CommandTree, income_for) -> None:
+    """`income_for(guild_id, user_id)` gives a member's weekly coin income."""
+
+    async def stake(interaction: discord.Interaction, bet: int) -> bool:
+        """Validate and take the bet up front. False means the caller was told why not."""
+        income = income_for(interaction.guild.id, interaction.user.id)
+        coins = economy.account(interaction.guild.id, interaction.user.id, income)["coins"]
+        try:
+            economy.check_bet(coins, bet)
+        except economy.EconomyError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return False
+        economy.settle(interaction.guild.id, interaction.user.id, income, -bet)
+        return True
+
+    def pay(interaction: discord.Interaction, amount: int) -> int:
+        income = income_for(interaction.guild.id, interaction.user.id)
+        return economy.settle(interaction.guild.id, interaction.user.id, income, amount)
 
     @tree.command(name="slot", description="Spin the slot machine")
-    async def slot(interaction: discord.Interaction):
+    @app_commands.describe(bet="Coins to stake")
+    @app_commands.guild_only()
+    async def slot(interaction: discord.Interaction, bet: int):
+        if not await stake(interaction, bet):
+            return
         reels = random.choices(SYMBOLS, weights=WEIGHTS, k=3)
 
         embed = discord.Embed(title="\U0001F3B0  S L O T S  \U0001F3B0",
@@ -117,7 +168,11 @@ def setup(tree: app_commands.CommandTree) -> None:
             embed.description = _panel(shown)
             if stop == 3:
                 line, embed.colour = outcome(reels)
-                embed.description = f"{_panel(reels)}\n\n{line}"
+                multiple = payout_multiple(reels)
+                coins = pay(interaction, bet * multiple)
+                won = bet * multiple - bet
+                embed.description = (f"{_panel(reels)}\n\n{line}\n"
+                                     f"**{won:+}** coins · balance {coins}")
             await interaction.edit_original_response(embed=embed)
 
     @tree.command(name="wheel", description="Spin a wheel of your own options")
@@ -137,8 +192,10 @@ def setup(tree: app_commands.CommandTree) -> None:
         await interaction.response.send_message(embed=embed)
 
     @tree.command(name="dice", description="Roll dice, e.g. 2d6 or 1d20")
-    @app_commands.describe(notation="Dice to roll, like 2d6, 1d20 or d100")
-    async def dice(interaction: discord.Interaction, notation: str = "1d6"):
+    @app_commands.describe(notation="Dice to roll, like 2d6, 1d20 or d100",
+                           bet="Coins to stake against the house; leave out to just roll")
+    @app_commands.guild_only()
+    async def dice(interaction: discord.Interaction, notation: str = "1d6", bet: int = 0):
         try:
             count, sides = parse_dice(notation)
         except ValueError as exc:
@@ -146,19 +203,49 @@ def setup(tree: app_commands.CommandTree) -> None:
             return
 
         rolls = [random.randint(1, sides) for _ in range(count)]
-        embed = discord.Embed(title=f"\U0001F3B2 {count}d{sides}",
-                              description=" + ".join(str(roll) for roll in rolls)
-                              if count > 1 else f"**{rolls[0]}**",
-                              colour=PAIR_COLOUR)
-        if count > 1:
-            embed.description += f"\n\n**{sum(rolls)}**"
+        total = sum(rolls)
+        embed = discord.Embed(title=f"\U0001F3B2 {count}d{sides}", colour=PAIR_COLOUR)
+        detail = " + ".join(str(roll) for roll in rolls) if count > 1 else ""
+
+        if not bet:
+            embed.description = (f"{detail}\n\n**{total}**" if detail else f"**{total}**")
+            await interaction.response.send_message(embed=embed)
+            return
+
+        if not await stake(interaction, bet):
+            return
+        house = sum(random.randint(1, sides) for _ in range(count))
+        if total > house:
+            line, delta, embed.colour = "**You win.**", bet * 2, JACKPOT_COLOUR
+        elif total < house:
+            line, delta, embed.colour = "**The house wins.**", 0, LOSE_COLOUR
+        else:
+            line, delta = "**Tie** — your bet is returned.", bet
+
+        coins = pay(interaction, delta)
+        embed.description = (f"{detail}\n" if detail else "") + \
+            f"You **{total}** · house **{house}**\n\n{line}\n" \
+            f"**{delta - bet:+}** coins · balance {coins}"
         await interaction.response.send_message(embed=embed)
 
     @tree.command(name="coinflip", description="Flip a coin against whoever joins first")
-    async def coinflip(interaction: discord.Interaction):
+    @app_commands.describe(bet="Coins each side stakes")
+    @app_commands.guild_only()
+    async def coinflip(interaction: discord.Interaction, bet: int):
+        income = income_for(interaction.guild.id, interaction.user.id)
+        coins = economy.account(interaction.guild.id, interaction.user.id, income)["coins"]
+        try:
+            economy.check_bet(coins, bet)
+        except economy.EconomyError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        # Neither side is charged until someone joins, so an unanswered
+        # challenge costs the caller nothing.
         embed = discord.Embed(
             title="\U0001FA99 Coin flip",
-            description=(f"{interaction.user.mention} is flipping a coin.\n"
+            description=(f"{interaction.user.mention} is flipping for **{bet}** coins.\n"
                          "First to join takes tails."),
             colour=LOSE_COLOUR)
-        await interaction.response.send_message(embed=embed, view=CoinFlip(interaction.user))
+        await interaction.response.send_message(
+            embed=embed, view=CoinFlip(interaction.user, bet, income_for))

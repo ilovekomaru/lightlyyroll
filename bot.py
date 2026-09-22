@@ -10,6 +10,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 
 import chart
+import economy
 import elo_roles
 import faceit
 import games
@@ -54,7 +55,19 @@ class RollBot(discord.Client):
 
 client = RollBot()
 tree = client.tree
-games.setup(tree)
+
+
+def weekly_income(guild_id: int, user_id: int) -> int:
+    """A member's weekly coins: their elo, or a flat base without a linked account.
+
+    Elo is read from the cache the role sync keeps on each link, so paying income
+    never costs a FACEIT request.
+    """
+    entry = links.for_guild(guild_id).get(str(user_id)) or {}
+    return entry.get("elo") or economy.BASE_INCOME
+
+
+games.setup(tree, weekly_income)
 
 
 def player_card(player: Player) -> tuple[discord.Embed, discord.File]:
@@ -86,20 +99,31 @@ NICKNAME_HELP = "FACEIT nickname (defaults to your linked account)"
 
 
 HELP = {
-    "roll": "Random number",
-    "slot": "Spin the slot machine",
-    "wheel": "Pick from your options",
-    "dice": "Roll dice, like 2d6",
-    "coinflip": "Flip against whoever joins",
-    "elo": "Elo and trend chart",
-    "stats": "Recent match stats",
-    "today": "Today's stats",
-    "avg": "Average kills per match",
-    "whoplayed": "Who played today",
-    "loginfaceit": "Link your FACEIT account",
-    "logoutfaceit": "Unlink your account",
-    "faceitchannel": "Set announcement channel",
-    "help": "This list",
+    "Games": {
+        "slot": "Spin the slot machine",
+        "coinflip": "Flip against whoever joins",
+        "dice": "Roll dice, like 2d6",
+        "roll": "Random number, free",
+        "wheel": "Pick from your options, free",
+    },
+    "Coins": {
+        "balance": "Your coins and income",
+        "pay": "Give coins to someone",
+        "rich": "Who has the most coins",
+    },
+    "FACEIT": {
+        "elo": "Elo and trend chart",
+        "stats": "Recent match stats",
+        "today": "Today's stats",
+        "avg": "Average kills per match",
+        "whoplayed": "Who played today",
+    },
+    "Account": {
+        "loginfaceit": "Link your FACEIT account",
+        "logoutfaceit": "Unlink your account",
+        "faceitchannel": "Set announcement channel",
+        "help": "This list",
+    },
 }
 
 
@@ -109,17 +133,79 @@ def is_owner_only(command: app_commands.Command) -> bool:
 
 @tree.command(name="help", description="List every command")
 async def help_command(interaction: discord.Interaction):
-    lines = []
-    for command in sorted(tree.get_commands(), key=lambda c: c.name):
-        if is_owner_only(command):
-            continue
-        params = " ".join(f"[{p.name}]" if not p.required else f"<{p.name}>"
-                          for p in command.parameters)
-        usage = f"/{command.name} {params}".strip()
-        # Fall back to the command's own description so a new command still shows up.
-        lines.append(f"**{usage}** — {HELP.get(command.name, command.description)}")
-    embed = discord.Embed(title="Commands", description="\n".join(lines), colour=0xCA5325)
+    listed = {command.name: command for command in tree.get_commands()
+              if not is_owner_only(command)}
+    embed = discord.Embed(title="Commands", colour=0xCA5325)
+
+    for theme, blurbs in HELP.items():
+        lines = []
+        for name, blurb in blurbs.items():
+            command = listed.pop(name, None)
+            if command is None:
+                continue
+            params = " ".join(f"[{p.name}]" if not p.required else f"<{p.name}>"
+                              for p in command.parameters)
+            lines.append(f"**{f'/{name} {params}'.strip()}** — {blurb}")
+        if lines:
+            embed.add_field(name=theme, value="\n".join(lines), inline=False)
+
+    # Anything without a theme still gets listed rather than silently vanishing.
+    if listed:
+        embed.add_field(name="Other", inline=False, value="\n".join(
+            f"**/{name}** — {command.description}"
+            for name, command in sorted(listed.items())))
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@tree.command(name="balance", description="Your coins, weekly income and gift allowance")
+@app_commands.describe(member="Whose balance to show (default yours)")
+@app_commands.guild_only()
+async def balance(interaction: discord.Interaction, member: discord.Member = None):
+    member = member or interaction.user
+    income = weekly_income(interaction.guild.id, member.id)
+    state = economy.account(interaction.guild.id, member.id, income)
+
+    embed = discord.Embed(title=f"{state['coins']} coins", colour=0xFFC800)
+    embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
+    embed.add_field(name="Weekly income", value=f"{income}")
+    embed.add_field(name="Next payout", value=f"<t:{int(state['next_payout'])}:R>")
+    if member == interaction.user:
+        embed.add_field(name="Can still give away", value=f"{state['gift_left']}")
+    embed.set_footer(text=f"Max bet right now: {economy.max_bet(state['coins'])}")
+    if state["credited"]:
+        embed.description = f"Weekly income of **{state['credited']}** coins just landed."
+    await interaction.response.send_message(embed=embed)
+
+
+@tree.command(name="pay", description="Give coins to another member")
+@app_commands.describe(member="Who to pay", amount="How many coins")
+@app_commands.guild_only()
+async def pay(interaction: discord.Interaction, member: discord.Member, amount: int):
+    if member.bot:
+        raise economy.EconomyError("Bots have no use for coins.")
+    left, allowance = economy.transfer(
+        interaction.guild.id,
+        interaction.user.id, weekly_income(interaction.guild.id, interaction.user.id),
+        member.id, weekly_income(interaction.guild.id, member.id), amount)
+    await interaction.response.send_message(
+        f"{interaction.user.mention} gave **{amount}** coins to {member.mention}.\n"
+        f"You have {left} left, and can give away {allowance} more this week.")
+
+
+@tree.command(name="rich", description="Who has the most coins here")
+@app_commands.guild_only()
+async def rich(interaction: discord.Interaction):
+    ranked = economy.richest(interaction.guild.id)
+    if not ranked:
+        raise economy.EconomyError("Nobody here has an account yet. Try `/balance`.")
+    lines = []
+    for place, (user_id, coins) in enumerate(ranked, start=1):
+        holder = interaction.guild.get_member(user_id)
+        name = holder.display_name if holder else f"<@{user_id}>"
+        lines.append(f"**{place}.** {name} — {coins} coins")
+    embed = discord.Embed(title="\U0001F4B0 Richest", description="\n".join(lines),
+                          colour=0xFFC800)
+    await interaction.response.send_message(embed=embed)
 
 
 @tree.command(name="roll", description="Roll a random number")
@@ -371,7 +457,7 @@ async def _wait_for_login():
 @tree.error
 async def on_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     cause = error.__cause__ if isinstance(error, app_commands.CommandInvokeError) else error
-    shown = (FaceitError, elo_roles.RoleSyncError)
+    shown = (FaceitError, elo_roles.RoleSyncError, economy.EconomyError)
     message = str(cause) if isinstance(cause, shown) else "Something went wrong."
     if isinstance(cause, app_commands.CheckFailure):
         message = "Only the bot owner can use that command."

@@ -86,8 +86,10 @@ async def sync(guild: discord.Guild) -> list[LevelChange]:
         before = entry.get("level")
         if before is not None and before != level:
             changes.append(LevelChange(member, player, before, level))
-        if before != level:
-            links.update(guild.id, member.id, level=level)
+        if before != level or entry.get("elo") != player.elo:
+            # Elo is cached on the link so the economy can price weekly income
+            # without a FACEIT request of its own.
+            links.update(guild.id, member.id, level=level, elo=player.elo)
 
         role = await _ensure_role(guild, member, entry, player, level)
         positions[role] = ceiling - 1 - index
