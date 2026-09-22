@@ -37,6 +37,12 @@ def _panel(reels: list[str]) -> str:
     return "┃ " + " ┃ ".join(reels) + " ┃"
 
 
+def _player(embed: discord.Embed, member) -> discord.Embed:
+    """Name and avatar in the embed's author line, so it is clear who is playing."""
+    embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
+    return embed
+
+
 def payout_multiple(reels: list[str]) -> int:
     """What the stake is multiplied by; 0 means the stake is lost."""
     if reels[0] == reels[1] == reels[2]:
@@ -119,10 +125,12 @@ class CoinFlip(discord.ui.View):
 
         embed = discord.Embed(
             title=f"\U0001FA99 {side}",
-            description=(f"{self.challenger.mention} called heads, "
-                         f"{self.opponent.mention} got tails.\n\n"
+            description=(f"**{self.challenger.display_name}** called heads, "
+                         f"**{self.opponent.display_name}** got tails.\n\n"
                          f"**{winner.display_name} wins {self.stake} coins.**"),
             colour=PAIR_COLOUR)
+        # The winner takes the avatar slot, so the result reads at a glance.
+        _player(embed, winner)
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def on_timeout(self):
@@ -156,12 +164,12 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
         if not await stake(interaction, bet):
             return
         reels = random.choices(SYMBOLS, weights=WEIGHTS, k=3)
-        # Mentions inside an embed render as a tag without pinging anyone.
-        header = f"{interaction.user.mention} staked **{bet}** coins"
+        header = f"Staked **{bet}** coins"
 
         embed = discord.Embed(title="\U0001F3B0  S L O T S  \U0001F3B0",
                               description=f"{header}\n\n{_panel([BLANK] * 3)}",
                               colour=LOSE_COLOUR)
+        _player(embed, interaction.user)
         await interaction.response.send_message(embed=embed)
 
         # Reveal one reel at a time by editing, which is the whole animation.
@@ -226,10 +234,11 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
             line, delta = "**Tie** — your bet is returned.", bet
 
         coins = pay(interaction, delta)
+        _player(embed, interaction.user)
         embed.description = (
-            f"{interaction.user.mention} staked **{bet}** coins\n\n"
+            f"Staked **{bet}** coins\n\n"
             + (f"{detail}\n" if detail else "")
-            + f"{interaction.user.display_name} **{total}** · house **{house}**\n\n"
+            + f"You **{total}** · house **{house}**\n\n"
             f"{line}\n**{delta - bet:+}** coins · balance {coins}")
         await interaction.response.send_message(embed=embed)
 
@@ -249,8 +258,9 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
         # challenge costs the caller nothing.
         embed = discord.Embed(
             title="\U0001FA99 Coin flip",
-            description=(f"{interaction.user.mention} is flipping for **{bet}** coins.\n"
+            description=(f"Flipping for **{bet}** coins.\n"
                          "First to join takes tails."),
             colour=LOSE_COLOUR)
+        _player(embed, interaction.user)
         await interaction.response.send_message(
             embed=embed, view=CoinFlip(interaction.user, bet, income_for))
