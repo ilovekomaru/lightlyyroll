@@ -156,22 +156,25 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
         if not await stake(interaction, bet):
             return
         reels = random.choices(SYMBOLS, weights=WEIGHTS, k=3)
+        # Mentions inside an embed render as a tag without pinging anyone.
+        header = f"{interaction.user.mention} staked **{bet}** coins"
 
         embed = discord.Embed(title="\U0001F3B0  S L O T S  \U0001F3B0",
-                              description=_panel([BLANK] * 3), colour=LOSE_COLOUR)
+                              description=f"{header}\n\n{_panel([BLANK] * 3)}",
+                              colour=LOSE_COLOUR)
         await interaction.response.send_message(embed=embed)
 
         # Reveal one reel at a time by editing, which is the whole animation.
         for stop in range(1, 4):
             await asyncio.sleep(REEL_PAUSE)
             shown = reels[:stop] + [BLANK] * (3 - stop)
-            embed.description = _panel(shown)
+            embed.description = f"{header}\n\n{_panel(shown)}"
             if stop == 3:
                 line, embed.colour = outcome(reels)
                 multiple = payout_multiple(reels)
                 coins = pay(interaction, bet * multiple)
                 won = bet * multiple - bet
-                embed.description = (f"{_panel(reels)}\n\n{line}\n"
+                embed.description = (f"{header}\n\n{_panel(reels)}\n\n{line}\n"
                                      f"**{won:+}** coins · balance {coins}")
             await interaction.edit_original_response(embed=embed)
 
@@ -223,9 +226,11 @@ def setup(tree: app_commands.CommandTree, income_for) -> None:
             line, delta = "**Tie** — your bet is returned.", bet
 
         coins = pay(interaction, delta)
-        embed.description = (f"{detail}\n" if detail else "") + \
-            f"You **{total}** · house **{house}**\n\n{line}\n" \
-            f"**{delta - bet:+}** coins · balance {coins}"
+        embed.description = (
+            f"{interaction.user.mention} staked **{bet}** coins\n\n"
+            + (f"{detail}\n" if detail else "")
+            + f"{interaction.user.display_name} **{total}** · house **{house}**\n\n"
+            f"{line}\n**{delta - bet:+}** coins · balance {coins}")
         await interaction.response.send_message(embed=embed)
 
     @tree.command(name="coinflip", description="Flip a coin against whoever joins first")
