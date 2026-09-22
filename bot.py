@@ -170,8 +170,7 @@ async def balance(interaction: discord.Interaction, member: discord.Member = Non
     embed.set_author(name=member.display_name, icon_url=member.display_avatar.url)
     embed.add_field(name="Weekly income", value=f"{income}")
     embed.add_field(name="Next payout", value=f"<t:{int(state['next_payout'])}:R>")
-    if member == interaction.user:
-        embed.add_field(name="Can still give away", value=f"{state['gift_left']}")
+    embed.add_field(name="Can still give away", value=f"{state['gift_left']}")
     embed.set_footer(text=f"Max bet right now: {economy.max_bet(state['coins'])}")
     if state["credited"]:
         embed.description = f"Weekly income of **{state['credited']}** coins just landed."
