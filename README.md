@@ -4,6 +4,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 
 | Command | What it does |
 | --- | --- |
+| `/help` | List every command |
 | `/roll` | Random number 0–100 |
 | `/roll <number>` | Random number 0–`<number>` |
 | `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |

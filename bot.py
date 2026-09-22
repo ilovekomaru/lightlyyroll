@@ -83,6 +83,35 @@ async def resolve(interaction: discord.Interaction, nickname: str | None) -> Pla
 NICKNAME_HELP = "FACEIT nickname (defaults to your linked account)"
 
 
+HELP = {
+    "roll": "Random number",
+    "elo": "Elo and trend chart",
+    "stats": "Recent match stats",
+    "today": "Today's stats",
+    "avg": "Average kills per match",
+    "whoplayed": "Who played today",
+    "loginfaceit": "Link your FACEIT account",
+    "logoutfaceit": "Unlink your account",
+    "faceitchannel": "Set announcement channel",
+    "loginfaceitforce": "Link someone else (owner)",
+    "logoutfaceitforce": "Unlink someone else (owner)",
+    "help": "This list",
+}
+
+
+@tree.command(name="help", description="List every command")
+async def help_command(interaction: discord.Interaction):
+    lines = []
+    for command in sorted(tree.get_commands(), key=lambda c: c.name):
+        params = " ".join(f"[{p.name}]" if not p.required else f"<{p.name}>"
+                          for p in command.parameters)
+        usage = f"/{command.name} {params}".strip()
+        # Fall back to the command's own description so a new command still shows up.
+        lines.append(f"**{usage}** — {HELP.get(command.name, command.description)}")
+    embed = discord.Embed(title="Commands", description="\n".join(lines), colour=0xCA5325)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @tree.command(name="roll", description="Roll a random number")
 @app_commands.describe(maximum="Upper bound of the roll (default 100)")
 async def roll(interaction: discord.Interaction, maximum: app_commands.Range[int, 1, 1_000_000] = 100):
