@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 import chart
 import elo_roles
 import faceit
+import games
 import levels
 import links
 from discord.ext import tasks
@@ -53,6 +54,7 @@ class RollBot(discord.Client):
 
 client = RollBot()
 tree = client.tree
+games.setup(tree)
 
 
 def player_card(player: Player) -> tuple[discord.Embed, discord.File]:
@@ -85,6 +87,10 @@ NICKNAME_HELP = "FACEIT nickname (defaults to your linked account)"
 
 HELP = {
     "roll": "Random number",
+    "slot": "Spin the slot machine",
+    "wheel": "Pick from your options",
+    "dice": "Roll dice, like 2d6",
+    "coinflip": "Flip against whoever joins",
     "elo": "Elo and trend chart",
     "stats": "Recent match stats",
     "today": "Today's stats",

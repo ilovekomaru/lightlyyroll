@@ -7,6 +7,10 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/help` | List every command |
 | `/roll` | Random number 0–100 |
 | `/roll <number>` | Random number 0–`<number>` |
+| `/slot` | Slot machine, reels land one at a time |
+| `/dice <2d6>` | Roll dice in `NdM` notation |
+| `/wheel <a, b, c>` | Pick one of your options at random |
+| `/coinflip` | Flip against the first person to join |
 | `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR, win rate and the last 5 results |
 | `/today [nickname]` | The same stats, but only for matches since 03:00 GMT |
@@ -29,6 +33,20 @@ guild they linked in, so it also works in a DM).
 2. **Bot** tab → **Reset Token** → copy it. No privileged intents are needed.
 3. **OAuth2 → URL Generator** → scopes `bot` + `applications.commands`, bot permission
    `Send Messages`. Open the generated URL to invite the bot to your server.
+
+## Games
+
+`games.py` holds the chance commands; they use no FACEIT data and keep no state.
+
+`/slot` animates by editing its own message, revealing one reel per edit. The eight
+symbol weights are deliberately flat: the chance of three of a kind is the sum of each
+symbol's cubed probability, so fewer or more lopsided symbols make jackpots far too
+common. As tuned, a spin pays a pair ~34% of the time, three of a kind about 1 in 58,
+and three sevens about 1 in 2000.
+
+`/coinflip` posts a button; the first person other than the caller to press it becomes
+the opponent, and the caller always takes heads. Later clicks are refused rather than
+starting a second flip.
 
 ## FACEIT data
 
