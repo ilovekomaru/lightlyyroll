@@ -93,16 +93,20 @@ HELP = {
     "loginfaceit": "Link your FACEIT account",
     "logoutfaceit": "Unlink your account",
     "faceitchannel": "Set announcement channel",
-    "loginfaceitforce": "Link someone else (owner)",
-    "logoutfaceitforce": "Unlink someone else (owner)",
     "help": "This list",
 }
+
+
+def is_owner_only(command: app_commands.Command) -> bool:
+    return any(getattr(check, "owner_only", False) for check in command.checks)
 
 
 @tree.command(name="help", description="List every command")
 async def help_command(interaction: discord.Interaction):
     lines = []
     for command in sorted(tree.get_commands(), key=lambda c: c.name):
+        if is_owner_only(command):
+            continue
         params = " ".join(f"[{p.name}]" if not p.required else f"<{p.name}>"
                           for p in command.parameters)
         usage = f"/{command.name} {params}".strip()
@@ -273,6 +277,7 @@ def owner_only():
     so the command is still listed for everyone; it just refuses."""
     async def predicate(interaction: discord.Interaction) -> bool:
         return OWNER_ID != 0 and interaction.user.id == OWNER_ID
+    predicate.owner_only = True  # /help reads this to keep these out of the list
     return app_commands.check(predicate)
 
 
