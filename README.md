@@ -10,6 +10,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR, win rate and the last 5 results |
 | `/today [nickname]` | The same stats, but only for matches since 03:00 GMT |
 | `/avg [nickname]` | Average kills per match |
+| `/whoplayed` | Everyone linked here who has played since 03:00 GMT |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
 | `/logoutfaceit` | Unlink and remove that role |
 | `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
@@ -62,6 +63,11 @@ Expressions permission. Discord colours plain text nowhere else — the alternat
 `ansi` code block, which draws a border around the whole line. If the upload fails the run
 falls back to plain letters. The endpoint returns
 matches newest first, so the run is reversed for reading order.
+
+`/whoplayed` lists every linked member with matches today, ordered by the day's elo gain
+so the biggest climber leads. Elo for everyone comes from one batched request, but today's
+matches are per-player on the rate-limited stats endpoint, so a throttled player is counted
+in the footer as unavailable rather than failing the whole command.
 
 The per-match payload uses opaque keys; the mapping is documented at the top of `faceit.py`
 and was verified against the payload's own ratio fields across a full match window.

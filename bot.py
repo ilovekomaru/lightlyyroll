@@ -185,6 +185,46 @@ async def avg(interaction: discord.Interaction, nickname: str = None):
     await interaction.followup.send(embed=embed, file=file)
 
 
+@tree.command(name="whoplayed", description="Everyone linked here who has played since 03:00 GMT")
+@app_commands.guild_only()
+async def whoplayed(interaction: discord.Interaction):
+    await interaction.response.defer()
+    entries = links.for_guild(interaction.guild.id)
+    if not entries:
+        raise FaceitError("Nobody here has linked an account yet. Try `/loginfaceit`.")
+
+    players = await faceit.players_by_ids([e["player_id"] for e in entries.values()])
+    played, unavailable = [], 0
+    for player in players.values():
+        # Today's matches are per-player; that endpoint rate limits, so one player
+        # being throttled must not sink the whole command.
+        try:
+            data = await faceit.stats_today(player.id)
+        except FaceitError:
+            unavailable += 1
+            continue
+        if data is not None:
+            played.append((player, data))
+
+    if not played:
+        raise FaceitError("Nobody has played yet today.")
+
+    played.sort(key=lambda row: row[1].elo_delta, reverse=True)
+    rows = []
+    for player, data in played:
+        wins = sum(data.results)
+        rows.append(f"**{player.nickname}** — {player.elo} elo · "
+                    f"{wins}W {data.matches - wins}L · {data.elo_delta:+} elo")
+
+    embed = discord.Embed(title="Played today", description="\n".join(rows),
+                          colour=levels.LEVEL_COLOR[levels.level_for_elo(played[0][0].elo)])
+    footer = f"{len(played)} of {len(entries)} linked • since 03:00 GMT"
+    if unavailable:
+        footer += f" • {unavailable} unavailable"
+    embed.set_footer(text=footer)
+    await interaction.followup.send(embed=embed)
+
+
 @tree.command(name="loginfaceit", description="Link your FACEIT account and get an elo role")
 @app_commands.describe(nickname="Your FACEIT nickname")
 @app_commands.guild_only()

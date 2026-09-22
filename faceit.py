@@ -154,7 +154,7 @@ async def _matches(player_id: str, size: int) -> list[dict]:
     url = STATS_URL.format(player_id=quote(player_id, safe="")) + "?" + urlencode({"size": size})
     matches = await _get(url)
     if not matches:
-        raise FaceitError("No recent CS2 matches found for this player.")
+        raise PlayerNotFound("No recent CS2 matches found for this player.")
     return matches
 
 
@@ -180,8 +180,11 @@ async def recent_stats(player_id: str, size: int = 30) -> Stats:
 async def stats_today(player_id: str) -> Stats | None:
     """Stats since the 03:00 GMT reset, or None if nothing has been played."""
     since = day_start()
-    played = [match for match in await _matches(player_id, MAX_PAGE)
-              if int(match["date"]) >= since]
+    try:
+        matches = await _matches(player_id, MAX_PAGE)
+    except PlayerNotFound:
+        return None  # no match history at all trivially means none today
+    played = [match for match in matches if int(match["date"]) >= since]
     return _aggregate(played) if played else None
 
 
