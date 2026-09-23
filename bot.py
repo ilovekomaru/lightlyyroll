@@ -326,7 +326,7 @@ async def stats(interaction: discord.Interaction, nickname: str = None):
     await interaction.followup.send(embed=embed, file=file)
 
 
-@tree.command(name="today", description="Today's FACEIT CS2 stats, counted from 03:00 GMT")
+@tree.command(name="today", description="Today's FACEIT CS2 stats, counted from 05:00 Vilnius time")
 @app_commands.describe(nickname=NICKNAME_HELP)
 async def today(interaction: discord.Interaction, nickname: str = None):
     await interaction.response.defer()
@@ -356,7 +356,7 @@ async def avg(interaction: discord.Interaction, nickname: str = None):
     await interaction.followup.send(embed=embed, file=file)
 
 
-@tree.command(name="whoplayed", description="Everyone linked here who has played since 03:00 GMT")
+@tree.command(name="whoplayed", description="Everyone linked here who has played since 05:00 Vilnius time")
 @app_commands.guild_only()
 async def whoplayed(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -389,7 +389,7 @@ async def whoplayed(interaction: discord.Interaction):
 
     embed = discord.Embed(title="Played today", description="\n".join(rows),
                           colour=levels.LEVEL_COLOR[levels.level_for_elo(played[0][0].elo)])
-    footer = f"{len(played)} of {len(entries)} linked • since 03:00 GMT"
+    footer = f"{len(played)} of {len(entries)} linked • since {faceit.DAY_RESET_LABEL}"
     if unavailable:
         footer += f" • {unavailable} unavailable"
     embed.set_footer(text=footer)
@@ -410,7 +410,7 @@ async def loginfaceit(interaction: discord.Interaction, nickname: str):
     await interaction.followup.send(f"{message}\n{warning}" if warning else message, ephemeral=True)
 
 
-@tree.command(name="whoplayeddota", description="Everyone linked here who has played Dota 2 since 03:00 GMT")
+@tree.command(name="whoplayeddota", description="Everyone linked here who has played Dota 2 since 05:00 Vilnius time")
 @app_commands.guild_only()
 async def whoplayeddota(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -447,7 +447,7 @@ async def whoplayeddota(interaction: discord.Interaction):
 
     embed = discord.Embed(title="Played Dota today", description="\n".join(rows),
                           colour=DOTA_COLOUR)
-    footer = f"{len(played)} of {len(entries)} linked • since 03:00 GMT"
+    footer = f"{len(played)} of {len(entries)} linked • since {faceit.DAY_RESET_LABEL}"
     if unavailable:
         footer += f" • {unavailable} unavailable"
     embed.set_footer(text=footer)

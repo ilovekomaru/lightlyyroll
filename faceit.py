@@ -12,9 +12,10 @@ blocking calls are handed to a worker thread so they do not stall the event loop
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from urllib import error, request
 from urllib.parse import quote, urlencode
+from zoneinfo import ZoneInfo
 
 USER_AGENT = "lightlyyroll-discord-bot"
 TIMEOUT = 10
@@ -30,7 +31,11 @@ STATS_URL = "https://www.faceit.com/api/stats/v1/stats/time/users/{player_id}/ga
 KILLS, ASSISTS, DEATHS, WIN = "i6", "i7", "i8", "i10"
 ROUNDS, HEADSHOTS, DAMAGE = "i12", "i13", "i20"
 
-DAY_RESET_HOUR = 3  # a FACEIT "day" is counted from 03:00 GMT
+# A "day" runs from 05:00 Vilnius time. Kept as local time rather than a UTC hour so
+# the reset stays at 05:00 on the clock across daylight saving (UTC+2 winter, UTC+3 summer).
+RESET_ZONE = ZoneInfo("Europe/Vilnius")
+DAY_RESET_HOUR = 5
+DAY_RESET_LABEL = "05:00 Vilnius time"
 MAX_PAGE = 100      # the stats endpoint refuses larger pages
 
 
@@ -165,8 +170,8 @@ async def elo_history(player_id: str, size: int = 30) -> list[int]:
 
 
 def day_start() -> int:
-    """Epoch ms of the most recent 03:00 GMT boundary."""
-    now = datetime.now(timezone.utc)
+    """Epoch ms of the most recent 05:00 Vilnius boundary."""
+    now = datetime.now(RESET_ZONE)
     start = now.replace(hour=DAY_RESET_HOUR, minute=0, second=0, microsecond=0)
     if now < start:
         start -= timedelta(days=1)
@@ -178,7 +183,7 @@ async def recent_stats(player_id: str, size: int = 30) -> Stats:
 
 
 async def stats_today(player_id: str) -> Stats | None:
-    """Stats since the 03:00 GMT reset, or None if nothing has been played."""
+    """Stats since the 05:00 Vilnius reset, or None if nothing has been played."""
     since = day_start()
     try:
         matches = await _matches(player_id, MAX_PAGE)

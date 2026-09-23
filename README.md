@@ -16,9 +16,9 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/rich` | Who holds the most coins |
 | `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR, win rate and the last 5 results |
-| `/today [nickname]` | The same stats, but only for matches since 03:00 GMT |
+| `/today [nickname]` | The same stats, but only for matches since 05:00 Vilnius time |
 | `/avg [nickname]` | Average kills per match |
-| `/whoplayed` | Everyone linked here who has played since 03:00 GMT |
+| `/whoplayed` | Everyone linked here who has played since 05:00 Vilnius time |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
 | `/logoutfaceit` | Unlink and remove that role |
 | `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
@@ -98,8 +98,8 @@ default the FACEIT Forecast extension uses (`sliderValue: 30`). Ratios are compu
 summed totals (total kills ÷ total deaths, total damage ÷ total rounds), not by averaging
 each match's own ratio; only the former reproduces the figures the site displays.
 
-`/today` filters the same payload by each match's `date` against the most recent 03:00 GMT
-boundary (`DAY_RESET_HOUR`). It reports the day's net elo swing and the last few results as
+`/today` filters the same payload by each match's `date` against the most recent 05:00
+Vilnius boundary (`DAY_RESET_HOUR` in `RESET_ZONE`, so it follows daylight saving). It reports the day's net elo swing and the last few results as
 a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5), with a green W and a red
 L.
 

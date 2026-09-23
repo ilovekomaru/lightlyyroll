@@ -34,7 +34,7 @@ STEAM_VANITY_URL = "https://steamcommunity.com/id/{vanity}?xml=1"
 
 STEAM64_BASE = 76561197960265728
 RADIANT_SLOTS = 128  # player_slot below this is Radiant, at or above it is Dire
-TODAY_PAGE = 50      # far more matches than anyone plays between two 03:00 resets
+TODAY_PAGE = 50      # far more matches than anyone plays between two daily resets
 
 ID_LINK = re.compile(r"(?:dotabuff\.com|opendota\.com|stratz\.com)/players/(\d+)")
 STEAM_PROFILE_LINK = re.compile(r"steamcommunity\.com/profiles/(\d+)")
@@ -142,7 +142,7 @@ async def player(account: int) -> DotaPlayer:
 
 
 async def results_today(account: int) -> tuple[Result, ...]:
-    """Each match since the 03:00 GMT reset, oldest first."""
+    """Each match since the 05:00 Vilnius reset, oldest first."""
     query = urlencode([("limit", TODAY_PAGE), ("significant", 0),  # 0 keeps Turbo and other modes
                        ("project", "start_time"), ("project", "player_slot"),
                        ("project", "radiant_win"), ("project", "hero_id")])
