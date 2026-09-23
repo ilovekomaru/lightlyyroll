@@ -431,7 +431,8 @@ async def whoplayeddota(interaction: discord.Interaction):
         name = await dota.steam_name(entry["account_id"]) or entry["name"]
         if name != entry["name"]:
             links.link_dota(interaction.guild.id, int(user_id), entry["account_id"], name)
-        played.append((name, results))
+        member = await elo_roles.find_member(interaction.guild, int(user_id))
+        played.append((member.display_name if member else None, name, results))
 
     if not played:
         raise dota.DotaError("Nobody has played Dota yet today.")
@@ -439,13 +440,18 @@ async def whoplayeddota(interaction: discord.Interaction):
     def wins(results: tuple[dota.Result, ...]) -> int:
         return sum(result.won for result in results)
 
-    played.sort(key=lambda row: 2 * wins(row[1]) - len(row[1]), reverse=True)
-    rows = []
-    for name, results in played:
-        rows.append(f"**{discord.utils.escape_markdown(name)}** — "
-                    f"{wins(results)}W {len(results) - wins(results)}L  {dota_run(results)}")
+    played.sort(key=lambda row: 2 * wins(row[2]) - len(row[2]), reverse=True)
+    blocks = []
+    for discord_name, steam_name, results in played:
+        # Someone who left the server keeps their link but has no Discord name to show.
+        names = discord.utils.escape_markdown(steam_name)
+        if discord_name:
+            names = f"**{discord.utils.escape_markdown(discord_name)}** · {names}"
+        blocks.append(f"{names} — {wins(results)}W {len(results) - wins(results)}L\n"
+                      f"{dota_run(results)}")
 
-    embed = discord.Embed(title="Played Dota today", description="\n".join(rows),
+    # A blank line between players, so each two-line block reads as one unit.
+    embed = discord.Embed(title="Played Dota today", description="\n\n".join(blocks),
                           colour=DOTA_COLOUR)
     footer = f"{len(played)} of {len(entries)} linked • since {faceit.DAY_RESET_LABEL}"
     if unavailable:

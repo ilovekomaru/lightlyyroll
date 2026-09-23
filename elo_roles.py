@@ -59,7 +59,7 @@ async def sync(guild: discord.Guild) -> list[LevelChange]:
 
     ranked = []
     for user_id, entry in list(entries.items()):
-        member = await _member(guild, int(user_id))
+        member = await find_member(guild, int(user_id))
         if member is None:
             await _drop(guild, int(user_id), entry)
             continue
@@ -106,7 +106,7 @@ async def forget(guild: discord.Guild, user_id: int) -> bool:
     return True
 
 
-async def _member(guild: discord.Guild, user_id: int) -> discord.Member | None:
+async def find_member(guild: discord.Guild, user_id: int) -> discord.Member | None:
     """Fetch over REST when absent from cache — the members intent is not enabled."""
     member = guild.get_member(user_id)
     if member is not None:
