@@ -289,11 +289,27 @@ async def ensure_hero_emoji() -> None:
         HERO_EMOJI[hero.id] = str(emoji)
 
 
-def dota_run(results: tuple[dota.Result, ...]) -> str:
-    """Each match as a W or L followed by its hero's icon. Matches are split by an
-    em space, which Discord keeps where it would collapse a run of plain spaces."""
-    return " ".join(result_run((result.won,)) + HERO_EMOJI.get(result.hero_id, "")
-                         for result in results)
+SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def party_tags(runs: list[tuple[dota.Result, ...]]) -> dict[tuple[int, bool], str]:
+    """A superscript number for each game two or more linked players played on the
+    same side, keyed by (match id, radiant) and numbered in the order they were played.
+    Players in the same game on opposite sides get no tag."""
+    sides = Counter((result.match_id, result.radiant) for run in runs for result in run)
+    starts = {(result.match_id, result.radiant): result.start_time
+              for run in runs for result in run}
+    shared = sorted((side for side, players in sides.items() if players > 1), key=starts.get)
+    return {side: str(number).translate(SUPERSCRIPT)
+            for number, side in enumerate(shared, start=1)}
+
+
+def dota_run(results: tuple[dota.Result, ...], tags: dict[tuple[int, bool], str]) -> str:
+    """Each match as a W or L followed by its hero's icon and any party tag. Matches
+    are split by an em space, which Discord keeps where it would collapse plain spaces."""
+    return "\u2003".join(result_run((result.won,)) + HERO_EMOJI.get(result.hero_id, "")
+                          + tags.get((result.match_id, result.radiant), "")
+                          for result in results)
 
 
 def result_run(results: tuple[bool, ...]) -> str:
@@ -441,6 +457,7 @@ async def whoplayeddota(interaction: discord.Interaction):
         return sum(result.won for result in results)
 
     played.sort(key=lambda row: 2 * wins(row[2]) - len(row[2]), reverse=True)
+    tags = party_tags([results for _, _, results in played])
     blocks = []
     for discord_name, steam_name, results in played:
         # Someone who left the server keeps their link but has no Discord name to show.
@@ -448,7 +465,9 @@ async def whoplayeddota(interaction: discord.Interaction):
         if discord_name:
             names = f"**{discord.utils.escape_markdown(discord_name)}** · {names}"
         blocks.append(f"{names} — {wins(results)}W {len(results) - wins(results)}L\n"
-                      f"{dota_run(results)}")
+                      f"{dota_run(results, tags)}")
+    if tags:
+        blocks.append(f"{' '.join(tags.values())} played together")
 
     # A blank line between players, so each two-line block reads as one unit.
     embed = discord.Embed(title="Played Dota today", description="\n\n".join(blocks),

@@ -51,6 +51,9 @@ class DotaError(Exception):
 class Result:
     won: bool
     hero_id: int
+    match_id: int
+    radiant: bool
+    start_time: int
 
 
 @dataclass(frozen=True)
@@ -145,13 +148,18 @@ async def results_today(account: int) -> tuple[Result, ...]:
     """Each match since the 05:00 Vilnius reset, oldest first."""
     query = urlencode([("limit", TODAY_PAGE), ("significant", 0),  # 0 keeps Turbo and other modes
                        ("project", "start_time"), ("project", "player_slot"),
-                       ("project", "radiant_win"), ("project", "hero_id")])
+                       ("project", "radiant_win"), ("project", "hero_id"),
+                       ("project", "match_id")])
     matches = await _json(MATCHES_URL.format(account_id=account) + "?" + query)
     since = day_start() // 1000
-    return tuple(Result((match["player_slot"] < RADIANT_SLOTS) == match["radiant_win"],
-                        match["hero_id"])
-                 for match in reversed(matches)
-                 if match["start_time"] >= since and match["radiant_win"] is not None)
+    results = []
+    for match in reversed(matches):
+        if match["start_time"] < since or match["radiant_win"] is None:
+            continue
+        radiant = match["player_slot"] < RADIANT_SLOTS
+        results.append(Result(radiant == match["radiant_win"], match["hero_id"],
+                              match["match_id"], radiant, match["start_time"]))
+    return tuple(results)
 
 
 async def heroes() -> list[Hero]:
