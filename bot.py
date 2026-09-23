@@ -596,6 +596,30 @@ async def logoutfaceitforce(interaction: discord.Interaction, member: discord.Me
         else f"{member.mention} is not linked.", ephemeral=True)
 
 
+@tree.command(name="logindotaforce", description="Link someone else's Dota 2 account")
+@app_commands.describe(member="Who to link", profile="Their Dotabuff or Steam profile link")
+@app_commands.guild_only()
+@owner_only()
+async def logindotaforce(interaction: discord.Interaction, member: discord.Member, profile: str):
+    await interaction.response.defer(ephemeral=True)
+    player = await dota.player(await dota.account_id(profile))
+    links.link_dota(interaction.guild.id, member.id, player.account_id, player.name)
+    await interaction.followup.send(
+        f"Linked {member.mention} to **{discord.utils.escape_markdown(player.name)}** — "
+        f"<https://www.dotabuff.com/players/{player.account_id}>", ephemeral=True)
+
+
+@tree.command(name="logoutdotaforce", description="Unlink someone else's Dota 2 account")
+@app_commands.describe(member="Who to unlink")
+@app_commands.guild_only()
+@owner_only()
+async def logoutdotaforce(interaction: discord.Interaction, member: discord.Member):
+    removed = links.unlink_dota(interaction.guild.id, member.id)
+    await interaction.response.send_message(
+        f"Unlinked {member.mention}." if removed else f"{member.mention} is not linked.",
+        ephemeral=True)
+
+
 @tasks.loop(minutes=REFRESH_MINUTES)
 async def refresh_elo_roles():
     for guild_id in links.guild_ids():
