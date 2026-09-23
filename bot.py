@@ -290,9 +290,10 @@ async def ensure_hero_emoji() -> None:
 
 
 def dota_run(results: tuple[dota.Result, ...]) -> str:
-    """Each match as its hero's icon followed by a W or L."""
-    return "  ".join(HERO_EMOJI.get(result.hero_id, "") + result_run((result.won,))
-                     for result in results)
+    """Each match as a W or L followed by its hero's icon. Matches are split by an
+    em space, which Discord keeps where it would collapse a run of plain spaces."""
+    return " ".join(result_run((result.won,)) + HERO_EMOJI.get(result.hero_id, "")
+                         for result in results)
 
 
 def result_run(results: tuple[bool, ...]) -> str:
