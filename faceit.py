@@ -35,7 +35,7 @@ ROUNDS, HEADSHOTS, DAMAGE = "i12", "i13", "i20"
 # the reset stays at 05:00 on the clock across daylight saving (UTC+2 winter, UTC+3 summer).
 RESET_ZONE = ZoneInfo("Europe/Vilnius")
 DAY_RESET_HOUR = 5
-DAY_RESET_LABEL = "05:00 Vilnius time"
+DAY_RESET_LABEL = "05:00"
 MAX_PAGE = 100      # the stats endpoint refuses larger pages
 
 
