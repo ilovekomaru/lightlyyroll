@@ -47,6 +47,9 @@ class RollBot(discord.Client):
             await ensure_result_emoji()
         except discord.HTTPException as exc:
             print(f"could not set up result emoji, falling back to letters: {exc}", flush=True)
+        # 127 uploads on a first run take a while under Discord's rate limit, so they
+        # happen in the background; until each lands, that hero just shows no icon.
+        self.hero_emoji_task = asyncio.create_task(ensure_hero_emoji())
         refresh_elo_roles.start()
         if GUILD_ID:
             guild = discord.Object(id=int(GUILD_ID))
@@ -257,6 +260,41 @@ async def ensure_result_emoji() -> None:
         RESULT_EMOJI[won] = str(emoji)
 
 
+HERO_EMOJI: dict[int, str] = {}
+HERO_EMOJI_PREFIX = "dh_"
+
+
+async def ensure_hero_emoji() -> None:
+    """Upload each Dota hero's minimap icon once as an application emoji.
+
+    The hero list is re-read at every start, so a newly released hero gets its icon
+    on the next restart with no code change.
+    """
+    try:
+        existing = {emoji.name: emoji for emoji in await client.fetch_application_emojis()}
+        heroes = await dota.heroes()
+    except (dota.DotaError, discord.HTTPException) as exc:
+        print(f"could not set up hero emoji, showing results without heroes: {exc}", flush=True)
+        return
+    for hero in heroes:
+        name = HERO_EMOJI_PREFIX + hero.slug
+        emoji = existing.get(name)
+        if emoji is None:
+            try:
+                emoji = await client.create_application_emoji(
+                    name=name, image=await dota.download(hero.icon))
+            except (dota.DotaError, discord.HTTPException) as exc:
+                print(f"could not upload the {hero.name} emoji: {exc}", flush=True)
+                continue
+        HERO_EMOJI[hero.id] = str(emoji)
+
+
+def dota_run(results: tuple[dota.Result, ...]) -> str:
+    """Each match as its hero's icon followed by a W or L."""
+    return "  ".join(HERO_EMOJI.get(result.hero_id, "") + result_run((result.won,))
+                     for result in results)
+
+
 def result_run(results: tuple[bool, ...]) -> str:
     """Wins green, losses red. Falls back to plain letters if the emoji are missing,
     which is the only way to colour text without wrapping it in a code block."""
@@ -397,12 +435,14 @@ async def whoplayeddota(interaction: discord.Interaction):
     if not played:
         raise dota.DotaError("Nobody has played Dota yet today.")
 
-    played.sort(key=lambda row: 2 * sum(row[1]) - len(row[1]), reverse=True)
+    def wins(results: tuple[dota.Result, ...]) -> int:
+        return sum(result.won for result in results)
+
+    played.sort(key=lambda row: 2 * wins(row[1]) - len(row[1]), reverse=True)
     rows = []
     for name, results in played:
-        wins = sum(results)
         rows.append(f"**{discord.utils.escape_markdown(name)}** — "
-                    f"{wins}W {len(results) - wins}L  {result_run(results)}")
+                    f"{wins(results)}W {len(results) - wins(results)}L  {dota_run(results)}")
 
     embed = discord.Embed(title="Played Dota today", description="\n".join(rows),
                           colour=DOTA_COLOUR)

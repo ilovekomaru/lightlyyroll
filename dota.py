@@ -19,10 +19,14 @@ from xml.etree import ElementTree
 from faceit import day_start
 
 USER_AGENT = "lightlyyroll-discord-bot"
-TIMEOUT = 10
+TIMEOUT = 20  # an uncached OpenDota match list was measured at 9.7s
 
 PLAYER_URL = "https://api.opendota.com/api/players/{account_id}"
 MATCHES_URL = "https://api.opendota.com/api/players/{account_id}/matches"
+HEROES_URL = "https://api.opendota.com/api/constants/heroes"
+# Hero icon paths in the constants are relative to Steam's CDN.
+STEAM_CDN = "https://cdn.cloudflare.steamstatic.com"
+HERO_PREFIX = "npc_dota_hero_"
 # Steam's public profile XML needs no Web API key and carries the live profile name,
 # where OpenDota's copy is only as fresh as its last crawl of the profile.
 STEAM_PROFILE_URL = "https://steamcommunity.com/profiles/{steam64}?xml=1"
@@ -41,6 +45,20 @@ FINDING_HELP = ("Paste your Dotabuff or Steam profile link, "
 
 class DotaError(Exception):
     """A failure that should be shown to the user rather than logged."""
+
+
+@dataclass(frozen=True)
+class Result:
+    won: bool
+    hero_id: int
+
+
+@dataclass(frozen=True)
+class Hero:
+    id: int
+    slug: str     # the internal name without its prefix, e.g. "antimage"
+    name: str     # the display name, e.g. "Anti-Mage"
+    icon: str     # URL of the 32x32 minimap icon
 
 
 @dataclass(frozen=True)
@@ -123,13 +141,24 @@ async def player(account: int) -> DotaPlayer:
     return DotaPlayer(account, name, profile.get("avatarfull"))
 
 
-async def results_today(account: int) -> tuple[bool, ...]:
-    """Win or loss for each match since the 03:00 GMT reset, oldest first."""
+async def results_today(account: int) -> tuple[Result, ...]:
+    """Each match since the 03:00 GMT reset, oldest first."""
     query = urlencode([("limit", TODAY_PAGE), ("significant", 0),  # 0 keeps Turbo and other modes
                        ("project", "start_time"), ("project", "player_slot"),
-                       ("project", "radiant_win")])
+                       ("project", "radiant_win"), ("project", "hero_id")])
     matches = await _json(MATCHES_URL.format(account_id=account) + "?" + query)
     since = day_start() // 1000
-    return tuple((match["player_slot"] < RADIANT_SLOTS) == match["radiant_win"]
+    return tuple(Result((match["player_slot"] < RADIANT_SLOTS) == match["radiant_win"],
+                        match["hero_id"])
                  for match in reversed(matches)
                  if match["start_time"] >= since and match["radiant_win"] is not None)
+
+
+async def heroes() -> list[Hero]:
+    return [Hero(hero["id"], hero["name"].removeprefix(HERO_PREFIX), hero["localized_name"],
+                 STEAM_CDN + hero["icon"].rstrip("?"))
+            for hero in (await _json(HEROES_URL)).values()]
+
+
+async def download(url: str) -> bytes:
+    return await asyncio.to_thread(_fetch, url)
