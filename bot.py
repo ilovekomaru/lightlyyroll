@@ -11,6 +11,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 
 import chart
+import dota
 import economy
 import elo_roles
 import faceit
@@ -28,6 +29,7 @@ OWNER_ID = int(os.getenv("OWNER_ID") or 0)
 MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 REFRESH_MINUTES = 5  # one batched FACEIT request per cycle, whatever the member count
+DOTA_COLOUR = 0xA72714
 RESULT_RUN = 5       # most recent results shown by /today
 ASSETS = Path(__file__).parent / "assets"
 
@@ -119,10 +121,15 @@ HELP = {
         "avg": "Average kills per match",
         "whoplayed": "Who played today",
     },
+    "Dota 2": {
+        "whoplayeddota": "Who played Dota today",
+    },
     "Account": {
         "loginfaceit": "Link your FACEIT account",
         "logoutfaceit": "Unlink your account",
         "faceitchannel": "Set announcement channel",
+        "logindota": "Link your Dota 2 account",
+        "logoutdota": "Unlink your Dota 2 account",
         "help": "This list",
     },
 }
@@ -364,6 +371,68 @@ async def loginfaceit(interaction: discord.Interaction, nickname: str):
     await interaction.followup.send(f"{message}\n{warning}" if warning else message, ephemeral=True)
 
 
+@tree.command(name="whoplayeddota", description="Everyone linked here who has played Dota 2 since 03:00 GMT")
+@app_commands.guild_only()
+async def whoplayeddota(interaction: discord.Interaction):
+    await interaction.response.defer()
+    entries = links.dota_for_guild(interaction.guild.id)
+    if not entries:
+        raise dota.DotaError("Nobody here has linked a Dota 2 account yet. Try `/logindota`.")
+
+    played, unavailable = [], 0
+    for user_id, entry in entries.items():
+        # One request per player, so one failing must not sink the whole command.
+        try:
+            results = await dota.results_today(entry["account_id"])
+        except dota.DotaError:
+            unavailable += 1
+            continue
+        if not results:
+            continue
+        name = await dota.steam_name(entry["account_id"]) or entry["name"]
+        if name != entry["name"]:
+            links.link_dota(interaction.guild.id, int(user_id), entry["account_id"], name)
+        played.append((name, results))
+
+    if not played:
+        raise dota.DotaError("Nobody has played Dota yet today.")
+
+    played.sort(key=lambda row: 2 * sum(row[1]) - len(row[1]), reverse=True)
+    rows = []
+    for name, results in played:
+        wins = sum(results)
+        rows.append(f"**{discord.utils.escape_markdown(name)}** — "
+                    f"{wins}W {len(results) - wins}L  {result_run(results)}")
+
+    embed = discord.Embed(title="Played Dota today", description="\n".join(rows),
+                          colour=DOTA_COLOUR)
+    footer = f"{len(played)} of {len(entries)} linked • since 03:00 GMT"
+    if unavailable:
+        footer += f" • {unavailable} unavailable"
+    embed.set_footer(text=footer)
+    await interaction.followup.send(embed=embed)
+
+
+@tree.command(name="logindota", description="Link your Dota 2 account")
+@app_commands.describe(profile="Your Dotabuff or Steam profile link")
+@app_commands.guild_only()
+async def logindota(interaction: discord.Interaction, profile: str):
+    await interaction.response.defer(ephemeral=True)
+    player = await dota.player(await dota.account_id(profile))
+    links.link_dota(interaction.guild.id, interaction.user.id, player.account_id, player.name)
+    await interaction.followup.send(
+        f"Linked to **{discord.utils.escape_markdown(player.name)}** — "
+        f"<https://www.dotabuff.com/players/{player.account_id}>", ephemeral=True)
+
+
+@tree.command(name="logoutdota", description="Unlink your Dota 2 account")
+@app_commands.guild_only()
+async def logoutdota(interaction: discord.Interaction):
+    removed = links.unlink_dota(interaction.guild.id, interaction.user.id)
+    await interaction.response.send_message(
+        "Unlinked." if removed else "You are not linked.", ephemeral=True)
+
+
 def owner_only():
     """Restrict to the account in OWNER_ID. Discord has no owner-only visibility,
     so the command is still listed for everyone; it just refuses."""
@@ -507,7 +576,7 @@ async def _wait_for_login():
 @tree.error
 async def on_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     cause = error.__cause__ if isinstance(error, app_commands.CommandInvokeError) else error
-    shown = (FaceitError, elo_roles.RoleSyncError, economy.EconomyError)
+    shown = (FaceitError, dota.DotaError, elo_roles.RoleSyncError, economy.EconomyError)
     message = str(cause) if isinstance(cause, shown) else "Something went wrong."
     if isinstance(cause, app_commands.CheckFailure):
         message = "Only the bot owner can use that command."

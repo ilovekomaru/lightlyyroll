@@ -1,7 +1,9 @@
 """Per-guild bot state: who is linked to which FACEIT player, and where to announce.
 
 Shape: {"links": {guild_id: {user_id: {player_id, nickname, role_id, level}}},
+        "dota": {guild_id: {user_id: {account_id, name}}},
         "channels": {guild_id: channel_id}}
+Dota links sit apart from "links" so the FACEIT role sync never sees them.
 Ids are strings because JSON object keys always are.
 
 Every mutation rewrites the whole file, which is fine at this size and keeps the
@@ -19,9 +21,10 @@ def _read() -> dict:
     try:
         data = json.loads(PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {"links": {}, "channels": {}}
+        return {"links": {}, "dota": {}, "channels": {}}
     if "links" not in data:
         data = {"links": data}  # the original flat {guild: {user: ...}} layout
+    data.setdefault("dota", {})
     data.setdefault("channels", {})
     return data
 
@@ -96,3 +99,23 @@ def set_channel(guild_id: int, channel: int | None) -> None:
     else:
         data["channels"][str(guild_id)] = channel
     _write(data)
+
+
+def dota_for_guild(guild_id: int) -> dict:
+    return _read()["dota"].get(str(guild_id), {})
+
+
+def link_dota(guild_id: int, user_id: int, account_id: int, name: str) -> None:
+    data = _read()
+    data["dota"].setdefault(str(guild_id), {})[str(user_id)] = {"account_id": account_id,
+                                                                "name": name}
+    _write(data)
+
+
+def unlink_dota(guild_id: int, user_id: int) -> dict | None:
+    data = _read()
+    entry = data["dota"].get(str(guild_id), {}).pop(str(user_id), None)
+    if not data["dota"].get(str(guild_id)):
+        data["dota"].pop(str(guild_id), None)
+    _write(data)
+    return entry
