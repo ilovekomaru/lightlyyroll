@@ -68,6 +68,7 @@ class Stats:
     adr: float
     win_rate: float
     elo_delta: int
+    final_elo: int | None      # after the newest match counted, when FACEIT recorded it
     results: tuple[bool, ...]  # one per match, oldest first
 
 
@@ -169,12 +170,17 @@ async def elo_history(player_id: str, size: int = 30) -> list[int]:
     return [int(match["elo"]) for match in reversed(matches) if match.get("elo") is not None]
 
 
-def day_start() -> int:
-    """Epoch ms of the most recent 05:00 Vilnius boundary."""
+def day_start(days_ago: int = 0) -> int:
+    """Epoch ms of the 05:00 Vilnius boundary that opened the day `days_ago` days back.
+
+    Stepping back is wall-clock arithmetic on the zoned time, so it lands on 05:00
+    even across a daylight saving change, when that day is 23 or 25 hours long.
+    """
     now = datetime.now(RESET_ZONE)
     start = now.replace(hour=DAY_RESET_HOUR, minute=0, second=0, microsecond=0)
     if now < start:
-        start -= timedelta(days=1)
+        days_ago += 1
+    start -= timedelta(days=days_ago)
     return int(start.timestamp() * 1000)
 
 
@@ -182,14 +188,19 @@ async def recent_stats(player_id: str, size: int = 30) -> Stats:
     return _aggregate(await _matches(player_id, size))
 
 
-async def stats_today(player_id: str) -> Stats | None:
-    """Stats since the 05:00 Vilnius reset, or None if nothing has been played."""
-    since = day_start()
+async def day_stats(player_id: str, days_ago: int = 0) -> Stats | None:
+    """Stats for the 05:00-to-05:00 Vilnius day `days_ago` days back (0 is today), or
+    None if nothing was played in it.
+
+    Nothing is stored: an earlier day is read from the same newest-100 page, so it is
+    only reachable while that many matches have not been played since.
+    """
+    since, until = day_start(days_ago), day_start(days_ago - 1)
     try:
         matches = await _matches(player_id, MAX_PAGE)
     except PlayerNotFound:
-        return None  # no match history at all trivially means none today
-    played = [match for match in matches if int(match["date"]) >= since]
+        return None  # no match history at all trivially means none that day
+    played = [match for match in matches if since <= int(match["date"]) < until]
     return _aggregate(played) if played else None
 
 
@@ -214,6 +225,8 @@ def _aggregate(matches: list[dict]) -> Stats:
         adr=total(DAMAGE) / rounds,
         win_rate=total(WIN) / played * 100,
         elo_delta=sum(int(match.get("elo_delta") or 0) for match in matches),
+        # matches[0] is the newest, and each match's elo is the rating after it
+        final_elo=int(matches[0]["elo"]) if matches[0].get("elo") is not None else None,
         # the endpoint returns newest first, so reverse into reading order
         results=tuple(float(match[WIN]) == 1 for match in reversed(matches)),
     )

@@ -19,6 +19,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/today [nickname]` | The same stats, but only for matches since 05:00 Vilnius time |
 | `/avg [nickname]` | Average kills per match |
 | `/whoplayed` | Everyone linked here who has played since 05:00 Vilnius time |
+| `/rewind` | The same list for yesterday, 05:00 to 05:00 |
 | `/loginfaceit <nickname>` | Link your FACEIT account and get an elo role |
 | `/logoutfaceit` | Unlink and remove that role |
 | `/faceitchannel [#channel]` | Where to announce level changes (empty turns it off) |
@@ -115,6 +116,12 @@ matches newest first, so the run is reversed for reading order.
 so the biggest climber leads. Elo for everyone comes from one batched request, but today's
 matches are per-player on the rate-limited stats endpoint, so a throttled player is counted
 in the footer as unavailable rather than failing the whole command.
+
+`/rewind` is the same list for yesterday, and `/rewinddota` the same for `/whoplayeddota`.
+Nothing is stored: both filter the recent-match page the today lists already fetch (FACEIT's
+newest 100, OpenDota's newest 50) to the previous 05:00-to-05:00 window. `/rewind` shows
+each player's elo as it stood after their last match that day, not where today's games
+have since taken it.
 
 The per-match payload uses opaque keys; the mapping is documented at the top of `faceit.py`
 and was verified against the payload's own ratio fields across a full match window.

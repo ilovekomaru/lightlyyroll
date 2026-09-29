@@ -4,6 +4,7 @@ import os
 import random
 import sys
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 import discord
@@ -123,9 +124,11 @@ HELP = {
         "today": "Today's stats",
         "avg": "Average kills per match",
         "whoplayed": "Who played today",
+        "rewind": "Who played yesterday",
     },
     "Dota 2": {
         "whoplayeddota": "Who played Dota today",
+        "rewinddota": "Who played Dota yesterday",
     },
     "Account": {
         "loginfaceit": "Link your FACEIT account",
@@ -347,7 +350,7 @@ async def stats(interaction: discord.Interaction, nickname: str = None):
 async def today(interaction: discord.Interaction, nickname: str = None):
     await interaction.response.defer()
     player = await resolve(interaction, nickname)
-    data = await faceit.stats_today(player.id)
+    data = await faceit.day_stats(player.id)
     embed, file = player_card(player)
     if data is None:
         embed.description = "No matches played today."
@@ -372,44 +375,71 @@ async def avg(interaction: discord.Interaction, nickname: str = None):
     await interaction.followup.send(embed=embed, file=file)
 
 
-@tree.command(name="whoplayed", description="Everyone linked here who has played since 05:00 Vilnius time")
-@app_commands.guild_only()
-async def whoplayed(interaction: discord.Interaction):
-    await interaction.response.defer()
-    entries = links.for_guild(interaction.guild.id)
+def day_footer(days_ago: int) -> str:
+    """"since 05:00" for today; the two boundaries it spans for an earlier day."""
+    if days_ago == 0:
+        return f"since {faceit.DAY_RESET_LABEL}"
+    start, end = (datetime.fromtimestamp(faceit.day_start(n) / 1000, faceit.RESET_ZONE)
+                  for n in (days_ago, days_ago - 1))
+    return f"{start.day} {start:%b %H:%M} – {end.day} {end:%b %H:%M}"
+
+
+async def played_embed(guild: discord.Guild, days_ago: int) -> discord.Embed:
+    """Everyone linked here who played CS2 on the given day, biggest climber first."""
+    entries = links.for_guild(guild.id)
     if not entries:
         raise FaceitError("Nobody here has linked an account yet. Try `/loginfaceit`.")
 
     players = await faceit.players_by_ids([e["player_id"] for e in entries.values()])
     played, unavailable = [], 0
     for player in players.values():
-        # Today's matches are per-player; that endpoint rate limits, so one player
+        # A day's matches are per-player; that endpoint rate limits, so one player
         # being throttled must not sink the whole command.
         try:
-            data = await faceit.stats_today(player.id)
+            data = await faceit.day_stats(player.id, days_ago)
         except FaceitError:
             unavailable += 1
             continue
-        if data is not None:
-            played.append((player, data))
+        if data is None:
+            continue
+        # An earlier day shows where each player finished it, not where today's games
+        # have since taken them.
+        elo = (data.final_elo or player.elo) if days_ago else player.elo
+        played.append((player, elo, data))
 
     if not played:
-        raise FaceitError("Nobody has played yet today.")
+        raise FaceitError("Nobody has played yet today." if days_ago == 0
+                          else "Nobody played yesterday.")
 
-    played.sort(key=lambda row: row[1].elo_delta, reverse=True)
+    played.sort(key=lambda row: row[2].elo_delta, reverse=True)
     rows = []
-    for player, data in played:
+    for player, elo, data in played:
         wins = sum(data.results)
-        rows.append(f"**{player.nickname}** — {player.elo} elo · "
+        rows.append(f"**{player.nickname}** — {elo} elo · "
                     f"{wins}W {data.matches - wins}L · {data.elo_delta:+} elo")
 
-    embed = discord.Embed(title="Played today", description="\n".join(rows),
-                          colour=levels.LEVEL_COLOR[levels.level_for_elo(played[0][0].elo)])
-    footer = f"{len(played)} of {len(entries)} linked • since {faceit.DAY_RESET_LABEL}"
+    embed = discord.Embed(title="Played today" if days_ago == 0 else "Played yesterday",
+                          description="\n".join(rows),
+                          colour=levels.LEVEL_COLOR[levels.level_for_elo(played[0][1])])
+    footer = f"{len(played)} of {len(entries)} linked • {day_footer(days_ago)}"
     if unavailable:
         footer += f" • {unavailable} unavailable"
     embed.set_footer(text=footer)
-    await interaction.followup.send(embed=embed)
+    return embed
+
+
+@tree.command(name="whoplayed", description="Everyone linked here who has played since 05:00 Vilnius time")
+@app_commands.guild_only()
+async def whoplayed(interaction: discord.Interaction):
+    await interaction.response.defer()
+    await interaction.followup.send(embed=await played_embed(interaction.guild, 0))
+
+
+@tree.command(name="rewind", description="Everyone linked here who played yesterday, 05:00 to 05:00 Vilnius time")
+@app_commands.guild_only()
+async def rewind(interaction: discord.Interaction):
+    await interaction.response.defer()
+    await interaction.followup.send(embed=await played_embed(interaction.guild, 1))
 
 
 @tree.command(name="loginfaceit", description="Link your FACEIT account and get an elo role")
@@ -426,11 +456,9 @@ async def loginfaceit(interaction: discord.Interaction, nickname: str):
     await interaction.followup.send(f"{message}\n{warning}" if warning else message, ephemeral=True)
 
 
-@tree.command(name="whoplayeddota", description="Everyone linked here who has played Dota 2 since 05:00 Vilnius time")
-@app_commands.guild_only()
-async def whoplayeddota(interaction: discord.Interaction):
-    await interaction.response.defer()
-    entries = links.dota_for_guild(interaction.guild.id)
+async def played_dota_embed(guild: discord.Guild, days_ago: int) -> discord.Embed:
+    """Everyone linked here who played Dota 2 on the given day, best record first."""
+    entries = links.dota_for_guild(guild.id)
     if not entries:
         raise dota.DotaError("Nobody here has linked a Dota 2 account yet. Try `/logindota`.")
 
@@ -438,7 +466,7 @@ async def whoplayeddota(interaction: discord.Interaction):
     for user_id, entry in entries.items():
         # One request per player, so one failing must not sink the whole command.
         try:
-            results = await dota.results_today(entry["account_id"])
+            results = await dota.day_results(entry["account_id"], days_ago)
         except dota.DotaError:
             unavailable += 1
             continue
@@ -446,12 +474,13 @@ async def whoplayeddota(interaction: discord.Interaction):
             continue
         name = await dota.steam_name(entry["account_id"]) or entry["name"]
         if name != entry["name"]:
-            links.link_dota(interaction.guild.id, int(user_id), entry["account_id"], name)
-        member = await elo_roles.find_member(interaction.guild, int(user_id))
+            links.link_dota(guild.id, int(user_id), entry["account_id"], name)
+        member = await elo_roles.find_member(guild, int(user_id))
         played.append((member.display_name if member else None, name, results))
 
     if not played:
-        raise dota.DotaError("Nobody has played Dota yet today.")
+        raise dota.DotaError("Nobody has played Dota yet today." if days_ago == 0
+                             else "Nobody played Dota yesterday.")
 
     def wins(results: tuple[dota.Result, ...]) -> int:
         return sum(result.won for result in results)
@@ -470,13 +499,27 @@ async def whoplayeddota(interaction: discord.Interaction):
         blocks.append(f"{' '.join(tags.values())} played together")
 
     # A blank line between players, so each two-line block reads as one unit.
-    embed = discord.Embed(title="Played Dota today", description="\n\n".join(blocks),
-                          colour=DOTA_COLOUR)
-    footer = f"{len(played)} of {len(entries)} linked • since {faceit.DAY_RESET_LABEL}"
+    embed = discord.Embed(title="Played Dota today" if days_ago == 0 else "Played Dota yesterday",
+                          description="\n\n".join(blocks), colour=DOTA_COLOUR)
+    footer = f"{len(played)} of {len(entries)} linked • {day_footer(days_ago)}"
     if unavailable:
         footer += f" • {unavailable} unavailable"
     embed.set_footer(text=footer)
-    await interaction.followup.send(embed=embed)
+    return embed
+
+
+@tree.command(name="whoplayeddota", description="Everyone linked here who has played Dota 2 since 05:00 Vilnius time")
+@app_commands.guild_only()
+async def whoplayeddota(interaction: discord.Interaction):
+    await interaction.response.defer()
+    await interaction.followup.send(embed=await played_dota_embed(interaction.guild, 0))
+
+
+@tree.command(name="rewinddota", description="Everyone linked here who played Dota 2 yesterday, 05:00 to 05:00 Vilnius time")
+@app_commands.guild_only()
+async def rewinddota(interaction: discord.Interaction):
+    await interaction.response.defer()
+    await interaction.followup.send(embed=await played_dota_embed(interaction.guild, 1))
 
 
 @tree.command(name="logindota", description="Link your Dota 2 account")

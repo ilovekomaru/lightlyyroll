@@ -34,7 +34,7 @@ STEAM_VANITY_URL = "https://steamcommunity.com/id/{vanity}?xml=1"
 
 STEAM64_BASE = 76561197960265728
 RADIANT_SLOTS = 128  # player_slot below this is Radiant, at or above it is Dire
-TODAY_PAGE = 50      # far more matches than anyone plays between two daily resets
+MATCH_PAGE = 50      # far more than anyone plays today and yesterday combined
 
 ID_LINK = re.compile(r"(?:dotabuff\.com|opendota\.com|stratz\.com)/players/(\d+)")
 STEAM_PROFILE_LINK = re.compile(r"steamcommunity\.com/profiles/(\d+)")
@@ -144,17 +144,18 @@ async def player(account: int) -> DotaPlayer:
     return DotaPlayer(account, name, profile.get("avatarfull"))
 
 
-async def results_today(account: int) -> tuple[Result, ...]:
-    """Each match since the 05:00 Vilnius reset, oldest first."""
-    query = urlencode([("limit", TODAY_PAGE), ("significant", 0),  # 0 keeps Turbo and other modes
+async def day_results(account: int, days_ago: int = 0) -> tuple[Result, ...]:
+    """Each match in the 05:00-to-05:00 Vilnius day `days_ago` days back (0 is today),
+    oldest first."""
+    query = urlencode([("limit", MATCH_PAGE), ("significant", 0),  # 0 keeps Turbo and other modes
                        ("project", "start_time"), ("project", "player_slot"),
                        ("project", "radiant_win"), ("project", "hero_id"),
                        ("project", "match_id")])
     matches = await _json(MATCHES_URL.format(account_id=account) + "?" + query)
-    since = day_start() // 1000
+    since, until = day_start(days_ago) // 1000, day_start(days_ago - 1) // 1000
     results = []
     for match in reversed(matches):
-        if match["start_time"] < since or match["radiant_win"] is None:
+        if not since <= match["start_time"] < until or match["radiant_win"] is None:
             continue
         radiant = match["player_slot"] < RADIANT_SLOTS
         results.append(Result(radiant == match["radiant_win"], match["hero_id"],
