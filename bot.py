@@ -4,6 +4,7 @@ import os
 import random
 import sys
 from collections import Counter
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -31,7 +32,7 @@ MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 REFRESH_MINUTES = 5  # one batched FACEIT request per cycle, whatever the member count
 DOTA_COLOUR = 0xA72714
-RESULT_RUN = 5       # most recent results shown by /today
+RESULT_RUN = 5       # most recent results shown by /today and /yesterday
 ASSETS = Path(__file__).parent / "assets"
 
 if not TOKEN:
@@ -122,6 +123,7 @@ HELP = {
         "elo": "Elo and trend chart",
         "stats": "Recent match stats",
         "today": "Today's stats",
+        "yesterday": "Yesterday's stats",
         "avg": "Average kills per match",
         "whoplayed": "Who played today",
         "rewind": "Who played yesterday",
@@ -345,21 +347,38 @@ async def stats(interaction: discord.Interaction, nickname: str = None):
     await interaction.followup.send(embed=embed, file=file)
 
 
-@tree.command(name="today", description="Today's FACEIT CS2 stats, counted from 05:00 Vilnius time")
-@app_commands.describe(nickname=NICKNAME_HELP)
-async def today(interaction: discord.Interaction, nickname: str = None):
-    await interaction.response.defer()
-    player = await resolve(interaction, nickname)
-    data = await faceit.day_stats(player.id)
+async def day_card(player: Player, days_ago: int) -> tuple[discord.Embed, discord.File]:
+    """A player's card with their stats for one 05:00-to-05:00 day."""
+    data = await faceit.day_stats(player.id, days_ago)
+    if days_ago and data is not None and data.final_elo:
+        # An earlier day shows where they finished it, as /rewind does.
+        player = replace(player, elo=data.final_elo)
     embed, file = player_card(player)
     if data is None:
-        embed.description = "No matches played today."
+        embed.description = ("No matches played today." if days_ago == 0
+                             else "No matches played yesterday.")
     else:
         embed.description = result_run(data.results[-RESULT_RUN:])
         add_stat_fields(embed, data)
         wins = sum(data.results)
         embed.set_footer(
             text=f"{wins}W {data.matches - wins}L • {data.elo_delta:+} elo")
+    return embed, file
+
+
+@tree.command(name="today", description="Today's FACEIT CS2 stats, counted from 05:00 Vilnius time")
+@app_commands.describe(nickname=NICKNAME_HELP)
+async def today(interaction: discord.Interaction, nickname: str = None):
+    await interaction.response.defer()
+    embed, file = await day_card(await resolve(interaction, nickname), 0)
+    await interaction.followup.send(embed=embed, file=file)
+
+
+@tree.command(name="yesterday", description="Yesterday's FACEIT CS2 stats, 05:00 to 05:00 Vilnius time")
+@app_commands.describe(nickname=NICKNAME_HELP)
+async def yesterday(interaction: discord.Interaction, nickname: str = None):
+    await interaction.response.defer()
+    embed, file = await day_card(await resolve(interaction, nickname), 1)
     await interaction.followup.send(embed=embed, file=file)
 
 

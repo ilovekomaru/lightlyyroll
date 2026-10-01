@@ -17,6 +17,7 @@ A lightweight Discord bot: dice rolls plus FACEIT CS2 player lookups.
 | `/elo [nickname] [matches]` | Current CS2 ELO plus a chart of the last N matches (default 30, max 100) |
 | `/stats [nickname]` | K/D/A, K/D, K/R, HS%, ADR, win rate and the last 5 results |
 | `/today [nickname]` | The same stats, but only for matches since 05:00 Vilnius time |
+| `/yesterday [nickname]` | The same for yesterday, 05:00 to 05:00, with the elo they finished it on |
 | `/avg [nickname]` | Average kills per match |
 | `/whoplayed` | Everyone linked here who has played since 05:00 Vilnius time |
 | `/rewind` | The same list for yesterday, 05:00 to 05:00 |
