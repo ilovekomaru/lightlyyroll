@@ -32,7 +32,7 @@ MATCH_WINDOW = 30
 MAX_HISTORY = 100  # the FACEIT endpoint caps its page size here
 REFRESH_MINUTES = 5  # one batched FACEIT request per cycle, whatever the member count
 DOTA_COLOUR = 0xA72714
-RESULT_RUN = 5       # most recent results shown by /today and /yesterday
+RESULT_RUN = 5       # most recent results shown by /stats and /yesterday
 ASSETS = Path(__file__).parent / "assets"
 
 if not TOKEN:
@@ -358,7 +358,8 @@ async def day_card(player: Player, days_ago: int) -> tuple[discord.Embed, discor
         embed.description = ("No matches played today." if days_ago == 0
                              else "No matches played yesterday.")
     else:
-        embed.description = result_run(data.results[-RESULT_RUN:])
+        results = data.results if days_ago == 0 else data.results[-RESULT_RUN:]
+        embed.description = result_run(results)
         add_stat_fields(embed, data)
         wins = sum(data.results)
         embed.set_footer(

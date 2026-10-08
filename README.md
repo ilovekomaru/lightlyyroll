@@ -101,9 +101,10 @@ summed totals (total kills ÷ total deaths, total damage ÷ total rounds), not b
 each match's own ratio; only the former reproduces the figures the site displays.
 
 `/today` filters the same payload by each match's `date` against the most recent 05:00
-Vilnius boundary (`DAY_RESET_HOUR` in `RESET_ZONE`, so it follows daylight saving). It reports the day's net elo swing and the last few results as
-a `W L W W L` run, oldest to newest, capped at `RESULT_RUN` (5), with a green W and a red
-L.
+Vilnius boundary (`DAY_RESET_HOUR` in `RESET_ZONE`, so it follows daylight saving). It reports
+the day's net elo swing and every result found for the day as a `W L W W L` run, oldest to
+newest, with a green W and a red L. The fetch is limited to FACEIT's newest 100 matches.
+`/stats` and `/yesterday` show only the latest `RESULT_RUN` (5) results.
 
 The coloured letters are **application emoji** (`assets/win.png`, `assets/loss.png`),
 uploaded once on first startup and reused after. They belong to the bot rather than a
